@@ -61,7 +61,7 @@
   header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--gris-claro);}
   header .titulo h2{margin:0;font-size:18px;}
   header .titulo p{margin:2px 0 0;font-size:12px;color:var(--gris);}
-  main{padding:22px 24px 60px;overflow-x:auto;}
+  main{padding:22px 24px 60px;}
 
   /* Solapas de módulo, estilo navegador (Chrome) */
   .module-tabs{display:flex;gap:4px;padding:10px 20px 0;background:var(--azul-oscuro);}
@@ -117,7 +117,7 @@
 
   .panel{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;padding:16px 18px;margin-bottom:18px;}
   .panel h3{margin:0 0 12px;font-size:14px;}
-  .substat-tabs{display:flex;gap:8px;margin-bottom:18px;}
+  .substat-tabs{display:flex;gap:8px;margin-bottom:18px;position:sticky;top:0;z-index:20;background:var(--fondo);padding:10px 0;margin-top:-10px;}
   .substat-btn{padding:8px 16px;border-radius:20px;border:1px solid var(--gris-claro);background:#fff;font-size:13px;cursor:pointer;color:var(--gris);font-weight:600;}
   .substat-btn:hover{background:var(--badge-bg);}
   .substat-btn.active{background:var(--azul-sunset);color:#fff;border-color:var(--azul-sunset);}
@@ -154,6 +154,9 @@
   .fila-notas-hito td{background:#fafcfc;border-top:none !important;}
   .notas-hito{width:100%;padding:6px 8px;border:1px solid var(--gris-claro);border-radius:6px;font-size:12.5px;background:#fff;color:var(--texto);resize:vertical;font-family:inherit;}
   .seccion-proyecto-fact{margin-bottom:22px;border:1px solid var(--gris-claro);border-radius:10px;overflow:hidden;background:#fff;}
+  .seccion-proyecto-fact-body{overflow-x:auto;}
+  .seccion-proyecto-fact-head .btn-mini{margin-left:auto;background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.45);}
+  .seccion-proyecto-fact-head .btn-mini:hover{background:rgba(255,255,255,.28);}
   .seccion-proyecto-fact-head{background:var(--azul-oscuro);color:#fff;padding:10px 16px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
   .seccion-proyecto-fact-head .nombre{font-weight:700;font-size:14px;}
   .seccion-proyecto-fact-head .meta{font-size:12px;opacity:.85;}
@@ -187,6 +190,12 @@
   .campo label{display:block;font-size:12px;font-weight:600;margin-bottom:4px;}
   .campo input, .campo textarea{width:100%;padding:8px 9px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;background:#fff;color:var(--texto);}
   .campo textarea{resize:vertical;min-height:60px;}
+  .campo select{width:100%;padding:8px 9px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;background:#fff;color:var(--texto);}
+  .campo-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .chip-definir{display:inline-block;background:#FFF3D6;color:#8a5a00;border:1px solid #F0C36D;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600;margin-left:6px;vertical-align:middle;}
+  .detalle-orden{font-size:11.5px;color:var(--gris);display:block;margin-top:3px;max-width:340px;white-space:pre-wrap;}
+  .sep-modal{border-top:1px solid var(--gris-claro);margin:16px 0 12px;padding-top:12px;}
+  .modal-editar{width:460px;}
   .campo .hint{font-size:11px;color:var(--gris);margin-top:3px;}
   .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
   .btn{padding:8px 16px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid transparent;font-weight:600;}
@@ -341,7 +350,13 @@
         <option value="Inactivo">Inactivo</option>
       </select>
 
+      <div class="chk-row">
+        <input type="checkbox" id="fComSoloDefinir" />
+        <label style="margin:0;text-transform:none;letter-spacing:0;opacity:1;font-size:12.5px;" for="fComSoloDefinir">Solo ítems con proveedor a definir</label>
+      </div>
+
       <button class="btn-limpiar" id="btnLimpiarCom">Limpiar filtros</button>
+      <button class="btn-limpiar" id="btnNuevoProveedor" style="display:block;">➕ Nuevo proveedor</button>
     </div>
 
     <div class="spacer"></div>
@@ -387,6 +402,7 @@
         <h3 id="proyModalNombre"></h3>
         <div class="desc" id="proyModalMeta"></div>
       </div>
+      <button class="btn-mini" style="margin-left:auto;" onclick="abrirEditarCliente(proyectoModalId)">✏️ Editar cliente</button>
       <button class="modal-close" onclick="cerrarModal('overlayProyecto')" aria-label="Cerrar">✕</button>
     </div>
     <div class="kpis-proyecto" id="proyModalKpis" style="margin:16px 0 4px;"></div>
@@ -478,6 +494,7 @@
         <h3 id="provModalNombre"></h3>
         <div class="desc" id="provModalMeta"></div>
       </div>
+      <button class="btn-mini" style="margin-left:auto;" onclick="abrirEditarProveedor(proveedorModalId)">✏️ Editar proveedor</button>
       <button class="modal-close" onclick="cerrarModal('overlayProveedor')" aria-label="Cerrar">✕</button>
     </div>
     <div class="grid-stats" id="provModalKpis" style="margin:16px 0 4px;grid-template-columns:repeat(3,1fr);"></div>
@@ -519,6 +536,87 @@
     <div id="histProvBody" style="font-size:12.5px;"></div>
     <div class="modal-actions">
       <button class="btn btn-secundario" onclick="cerrarModal('overlayHistorialProv')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayEditarOrden">
+  <div class="modal modal-editar">
+    <h3>Editar pago a proveedor</h3>
+    <div class="desc" id="edOrdMeta"></div>
+    <div class="campo">
+      <label>Proveedor</label>
+      <select id="edOrdProv"></select>
+      <div class="hint">Si todavía no se sabe quién, dejalo en "A definir": queda marcado como estimado hasta que asignes uno.</div>
+    </div>
+    <div class="campo" id="edOrdNuevoWrap" style="display:none;">
+      <label>Nombre del proveedor nuevo</label>
+      <input type="text" id="edOrdProvNuevo" placeholder="Razón social o nombre comercial" />
+    </div>
+    <div class="campo">
+      <label>Ítem / servicio</label>
+      <input type="text" id="edOrdItem" />
+    </div>
+    <div class="campo">
+      <label>Detalle de lo que se compra</label>
+      <textarea id="edOrdDetalle" placeholder="Modelo, cantidades, alcance, condiciones, referencia de cotización…"></textarea>
+    </div>
+    <div class="campo-2">
+      <div class="campo"><label>Monto (USD)</label><input type="number" id="edOrdMonto" step="0.01" /></div>
+      <div class="campo"><label>% del hito</label><input type="number" id="edOrdPct" step="0.01" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayEditarOrden')">Cancelar</button>
+      <button class="btn btn-primario" id="btnGuardarOrden" onclick="guardarEditarOrden()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayEditarProveedor">
+  <div class="modal modal-editar">
+    <h3 id="edProvTitulo">Proveedor</h3>
+    <div class="campo"><label>Nombre</label><input type="text" id="edProvNombre" /></div>
+    <div class="campo"><label>Categoría</label><div id="edProvCategoriaWrap"></div></div>
+    <div class="campo"><label>Contacto principal</label><input type="text" id="edProvContacto" /></div>
+    <div class="campo-2">
+      <div class="campo"><label>Email</label><input type="text" id="edProvEmail" /></div>
+      <div class="campo"><label>Teléfono</label><input type="text" id="edProvTel" /></div>
+    </div>
+    <div class="campo-2">
+      <div class="campo"><label>Condición de pago habitual (días)</label><input type="number" id="edProvCond" /></div>
+      <div class="campo"><label>Estado</label><select id="edProvEstado"><option>Activo</option><option>Inactivo</option></select></div>
+    </div>
+    <div class="campo"><label>Notas</label><textarea id="edProvNotas"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayEditarProveedor')">Cancelar</button>
+      <button class="btn btn-primario" id="btnGuardarProv" onclick="guardarEditarProveedor()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayEditarCliente">
+  <div class="modal modal-editar">
+    <h3>Cliente del proyecto</h3>
+    <div class="desc" id="edCliMeta"></div>
+    <div class="campo"><label>Cliente (nombre corto)</label><input type="text" id="edCliNombre" /><div class="hint">Cambiarlo acá afecta solo a este proyecto.</div></div>
+    <div class="campo"><label>Razón social (para la factura)</label><input type="text" id="edCliRazon" /></div>
+    <div class="campo"><label>ID fiscal (CUIT / NIF / EIN / RUC…)</label><input type="text" id="edCliIdFiscal" /></div>
+    <div class="campo"><label>Dirección fiscal</label><input type="text" id="edCliDir" /></div>
+    <div class="campo"><label>Email de facturación</label><input type="text" id="edCliEmail" /></div>
+    <div class="chk-row" style="margin:0 0 4px;">
+      <input type="checkbox" id="edCliAplicarOtros" />
+      <label for="edCliAplicarOtros" style="font-size:12.5px;font-weight:400;" id="edCliAplicarLbl"></label>
+    </div>
+    <div class="modal-actions" style="margin-top:8px;">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayEditarCliente')">Cancelar</button>
+      <button class="btn btn-primario" id="btnGuardarCli" onclick="guardarEditarCliente()">Guardar</button>
+    </div>
+    <div class="sep-modal">
+      <div class="campo" style="margin-bottom:8px;">
+        <label id="edCliRenLbl">Renombrar este cliente en todos sus proyectos</label>
+        <input type="text" id="edCliRenNuevo" placeholder="Nuevo nombre del cliente" />
+      </div>
+      <button class="btn btn-secundario" id="btnRenombrarCli" onclick="renombrarClienteEnTodos()">Renombrar en todos los proyectos</button>
     </div>
   </div>
 </div>
@@ -598,7 +696,7 @@ const msalInstance = new msal.PublicClientApplication({
     authority: `https://login.microsoftonline.com/${MSAL_CONFIG.tenantId}`,
     redirectUri: MSAL_CONFIG.redirectUri,
   },
-  cache: { cacheLocation: "sessionStorage", storeAuthStateInCookie: false },
+  cache: { cacheLocation: "localStorage", storeAuthStateInCookie: false }, // la sesión sobrevive a un refresh y a cerrar la pestaña
 });
 
 let cuentaActual = null;
@@ -890,7 +988,7 @@ async function cargarDatosERP(){
       proyecto: proy ? proy.nombre : "",
       proyectoId: proy ? proy.id : "",
       proveedorId: prov ? prov.id : null,
-      proveedor: c.Proveedor || (prov ? prov.nombre : ""),
+      proveedor: prov ? prov.nombre : (c.Proveedor || ""),
       item: c["Item_x0020__x002f__x0020_Servici"] || "",
       pct: c["_x0025__x0020_del_x0020_hito"] ?? 0,
       comFact: soloFecha(c.Fecha_x0020_Plan_x0020_Comercial),
@@ -900,6 +998,7 @@ async function cargarDatosERP(){
       poEnviada: !!c.PO_x0020_enviada,
       poNumero: c.NumeroPO || "",
       monto: c.MontoUSD ?? null,
+      detalle: c.Detalle || "",
       facturaProveedor: c["Factura_x0020_del_x0020_proveedo"] || "",
       facturaPagada: !!c.Factura_x0020_pagada,
       fechaPagoReal: soloFecha(c["Fecha_x0020_de_x0020_pago_x0020_"]),
@@ -992,6 +1091,18 @@ async function iniciarApp(){
     if(cuentas.length) cuentaActual = cuentas[0];
   }
   if(cuentaActual){
+    // Hay una sesión guardada: restaurarla sin mostrar el botón de login
+    document.getElementById("btnLogin").style.display = "none";
+    document.getElementById("loginMsg").textContent = "Restaurando tu sesión…";
+    try{
+      await msalInstance.acquireTokenSilent({ scopes: LOGIN_SCOPES, account: cuentaActual });
+    } catch(e){
+      console.warn("No se pudo renovar la sesión en silencio; hay que volver a iniciar sesión:", e);
+      cuentaActual = null;
+      document.getElementById("btnLogin").style.display = "";
+      document.getElementById("loginMsg").textContent = "Tu sesión venció. Iniciá sesión de nuevo.";
+      return;
+    }
     await despuesDeLogin();
   }
 }
@@ -1010,6 +1121,7 @@ function mostrarErrorLogin(e){
   err.textContent = "No se pudo iniciar sesión: " + (e && e.message ? e.message : e);
   err.style.display = "block";
   document.getElementById("btnLogin").disabled = false;
+  document.getElementById("btnLogin").style.display = "";
 }
 
 async function despuesDeLogin(){
@@ -1534,6 +1646,7 @@ function renderFacturacionClientes(){
       <div class="seccion-proyecto-fact-head">
         <span class="nombre">${escapeHtml(p.nombre)}</span>
         <span class="meta">${escapeHtml(p.cliente)} · PM: ${escapeHtml(p.pm)}${p.filial?` · Filial: ${escapeHtml(p.filial)}`:` · <span style="color:#ffb454;">⚠ sin filial</span>`}</span>
+        <button class="btn-mini" onclick="abrirEditarCliente('${p.id}')" title="Editar cliente y datos fiscales de este proyecto">✏️ Cliente</button>
       </div>
       <div class="seccion-proyecto-fact-body">
         <table class="hitos">
@@ -1638,6 +1751,7 @@ function renderFacturacionProveedores(){
     const prov = o.proveedorId ? proveedores.find(pr=>pr.id===o.proveedorId) : null;
     if(prov && !pasaFiltrosProveedor(prov)) return false;
     if(!prov && filtrosCom.texto && !o.proveedor.toLowerCase().includes(filtrosCom.texto.toLowerCase())) return false;
+    if(filtrosCom.soloADefinir && !esADefinir(o)) return false;
     return true;
   });
 
@@ -1683,8 +1797,10 @@ function renderFacturacionProveedores(){
               return `
             <tr class="${alarma?'fila-alerta':''}">
               <td class="col-desc">
-                <strong${o.proveedorId?` style="cursor:pointer;text-decoration:underline dotted;" onclick="abrirProveedor('${o.proveedorId}')" title="Ver ficha del proveedor"`:''}>${escapeHtml(o.proveedor)}</strong>
-                <div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)}</div>
+                <strong${(o.proveedorId && !esADefinir(o))?` style="cursor:pointer;text-decoration:underline dotted;" onclick="abrirProveedor('${o.proveedorId}')" title="Ver ficha del proveedor"`:''}>${escapeHtml(esADefinir(o)?"Proveedor a definir":o.proveedor)}</strong>${chipADefinir(o)}
+                <div class="motivo-chip" style="font-style:normal;max-width:none;">${escapeHtml(o.item)}</div>
+                ${o.detalle?`<span class="detalle-orden" title="Detalle de lo que se compra">${escapeHtml(o.detalle)}</span>`:""}
+                <button class="btn-mini" style="margin-top:5px;" onclick="abrirEditarOrden(${o.id})" title="Editar proveedor, ítem, detalle y monto">✏️ Editar</button>
               </td>
               <td>${o.monto!=null?"$"+o.monto.toLocaleString("es-AR"):"—"}</td>
               <td>${o.pct}%</td>
@@ -1782,7 +1898,7 @@ function abrirGenerarPO(oid){
   poblarSelectFilialesDoc(filial, "po");
   document.getElementById("genDocNumero").value = numeroSugeridoPO(filial);
   document.getElementById("genDocFecha").value = new Date().toISOString().slice(0,10);
-  document.getElementById("genDocConcepto").value = o.item;
+  document.getElementById("genDocConcepto").value = o.item + (o.detalle ? " — " + o.detalle.replace(/\s*\n\s*/g," · ") : "");
   document.getElementById("genDocMonto").value = o.monto != null ? o.monto : "";
   document.getElementById("genDocImpuestoPct").value = 0;
   abrirModal("overlayGenerarDoc");
@@ -2407,7 +2523,8 @@ function renderOrdenRow(o){
 
   return `
   <tr>
-    <td class="col-desc"><strong>${escapeHtml(o.proveedor)}</strong><div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)} · ${escapeHtml(o.proyecto)}</div>
+    <td class="col-desc"><strong>${escapeHtml(esADefinir(o)?"Proveedor a definir":o.proveedor)}</strong>${chipADefinir(o)}<div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)} · ${escapeHtml(o.proyecto)}${o.monto!=null?" · $"+o.monto.toLocaleString("es-AR"):""}</div>
+        ${o.detalle?`<span class="detalle-orden">${escapeHtml(o.detalle)}</span>`:""}
         ${ultimoMotivo ? `<span class="motivo-chip" title="${escapeHtml(ultimoMotivo)}">💬 ${escapeHtml(ultimoMotivo.slice(0,40))}${ultimoMotivo.length>40?'…':''}</span>` : ""}
     </td>
     <td>${o.pct}%</td>
@@ -2418,6 +2535,7 @@ function renderOrdenRow(o){
     <td><span class="estado ${estado}" title="${escapeHtml(tituloEstadoOrden(o))}">${iconoEstadoOrden(o)}</span></td>
     <td>
       <div class="acciones-hito">
+        <button class="btn-mini" onclick="event.stopPropagation();abrirEditarOrden(${o.id})">✏️ Editar</button>
         <button class="btn-mini" onclick="event.stopPropagation();abrirReplanificarProv(${o.id})">Replanificar</button>
         ${o.historial.length ? `<button class="btn-mini" onclick="event.stopPropagation();abrirHistorialProv(${o.id})">Historial (${o.historial.length})</button>` : ""}
       </div>
@@ -2484,11 +2602,11 @@ function refrescarVistasOrdenes(){
   actualizarBadgeCompras();
 }
 
-let filtrosCom = { texto:"", categoria:"", estado:"Activo" };
+let filtrosCom = { texto:"", categoria:"", estado:"Activo", soloADefinir:false };
 let proveedorModalId = null;
 
 function poblarSelectsCom(){
-  const categorias = [...new Set(proveedores.map(pr=>pr.categoria))].sort();
+  const categorias = [...new Set(proveedores.map(pr=>pr.categoria).filter(Boolean))].sort();
   const sel = document.getElementById("fComCategoria");
   sel.innerHTML = '<option value="">Todas</option>' + categorias.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
 }
@@ -2521,12 +2639,14 @@ function renderKpisCompras(){
   const totalProximas = resumenes.reduce((s,r)=>s+r.proximos,0);
   const totalAbiertas = resumenes.reduce((s,r)=>s+r.abiertas,0);
   const conVencidas = resumenes.filter(r=>r.vencidas>0).length;
+  const aDefinir = ordenesCompra.filter(o=>esADefinir(o) && !o.facturaPagada);
   document.getElementById("kpisTopCom").innerHTML = `
     <div class="stat-tile"><div class="num">${activos.length}</div><div class="lbl">Proveedores activos</div></div>
     <div class="stat-tile"><div class="num">${totalAbiertas}</div><div class="lbl">Órdenes abiertas</div></div>
     <div class="stat-tile"><div class="num" style="color:${totalProximas>0?'#B8860B':'#1E8E3E'}">${totalProximas}</div><div class="lbl">Por vencer (≤ ${DIAS_ALERTA_PAGO_PROV} días)</div></div>
     <div class="stat-tile"><div class="num" style="color:${totalVencidas>0?'#C0392B':'#1E8E3E'}">${totalVencidas}</div><div class="lbl">Órdenes vencidas</div></div>
     <div class="stat-tile"><div class="num" style="color:${conVencidas>0?'#C0392B':'#1E8E3E'}">${conVencidas}</div><div class="lbl">Proveedores con algo vencido</div></div>
+    <div class="stat-tile"><div class="num" style="color:${aDefinir.length>0?'#B8860B':'#1E8E3E'}">${aDefinir.length}</div><div class="lbl">Ítems con proveedor a definir</div><div class="sub">${aDefinir.length ? "$"+aDefinir.reduce((s,o)=>s+(o.monto||0),0).toLocaleString("es-AR")+" estimados" : "todo asignado"}</div></div>
   `;
 }
 
@@ -2551,7 +2671,7 @@ function actualizarBadgeCompras(){
 }
 
 function abrirProveedor(id){
-  proveedorModalId = id;
+  proveedorModalId = Number(id);
   refrescarModalProveedor();
   abrirModal("overlayProveedor");
 }
@@ -2622,16 +2742,274 @@ function renderEstadisticasCompras(){
   `;
 }
 
+document.getElementById("fComSoloDefinir").addEventListener("change", e=>{ filtrosCom.soloADefinir = e.target.checked; renderFacturacionProveedores(); });
+document.getElementById("btnNuevoProveedor").addEventListener("click", ()=> abrirEditarProveedor(null));
 document.getElementById("fComBuscar").addEventListener("input", e=>{ filtrosCom.texto = e.target.value; renderFacturacionProveedores(); });
 document.getElementById("fComCategoria").addEventListener("change", e=>{ filtrosCom.categoria = e.target.value; renderFacturacionProveedores(); });
 document.getElementById("fComEstado").addEventListener("change", e=>{ filtrosCom.estado = e.target.value; renderFacturacionProveedores(); });
 document.getElementById("btnLimpiarCom").addEventListener("click", ()=>{
-  filtrosCom = { texto:"", categoria:"", estado:"Activo" };
+  filtrosCom = { texto:"", categoria:"", estado:"Activo", soloADefinir:false };
+  document.getElementById("fComSoloDefinir").checked = false;
   document.getElementById("fComBuscar").value = "";
   document.getElementById("fComCategoria").value = "";
   document.getElementById("fComEstado").value = "Activo";
   renderFacturacionProveedores();
 });
+
+
+// =====================================================================
+// Edición de proveedores, pagos a proveedor (ítems "a definir") y clientes
+// =====================================================================
+const PROV_A_DEFINIR = "Sin asignar"; // proveedor "comodín" para ítems cotizados de forma estimada
+function esADefinir(o){ return !o.proveedorId || /^(sin asignar|a definir)$/i.test((o.proveedor||"").trim()); }
+function chipADefinir(o){ return esADefinir(o) ? `<span class="chip-definir" title="Ítem cotizado de forma estimada, todavía sin proveedor asignado">⏳ estimado</span>` : ""; }
+const cacheOpcionesColumna = {};
+async function opcionesColumna(lista, nombreInterno){
+  const k = lista + "|" + nombreInterno;
+  if(k in cacheOpcionesColumna) return cacheOpcionesColumna[k];
+  try{
+    const siteId = await resolverSiteId();
+    const listId = await resolverListaId(lista);
+    const j = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/columns?$top=200`);
+    const col = (j.value||[]).find(c=>c.name===nombreInterno);
+    cacheOpcionesColumna[k] = (col && col.choice) ? col.choice.choices : null;
+  } catch(e){ console.warn("No pude leer las opciones de la columna", nombreInterno, e); cacheOpcionesColumna[k] = null; }
+  return cacheOpcionesColumna[k];
+}
+function nv(id){ return document.getElementById(id).value.trim(); }
+function refrescarTodoTrasEditar(){
+  poblarSelectsFin(); poblarSelectsCom();
+  if(filtrosFin.cliente && !proyectos.some(p=>p.cliente===filtrosFin.cliente)) filtrosFin.cliente = "";
+  if(filtroClienteFacturacion && !proyectos.some(p=>p.cliente===filtroClienteFacturacion)) filtroClienteFacturacion = "";
+  document.getElementById("fFinCliente").value = filtrosFin.cliente || "";
+  renderProyectos();
+  if(vistaActual === "facturacion") renderFacturacion();
+  refrescarVistasOrdenes();
+  actualizarBadgeVencidos();
+}
+
+// ---- Proveedores (ficha) ----
+let ctxEditProv = null; // { id } o { id:null } para nuevo
+async function abrirEditarProveedor(id){
+  id = id != null ? Number(id) : null;
+  const pr = id ? proveedores.find(x=>x.id===id) : null;
+  ctxEditProv = { id: pr ? pr.id : null };
+  document.getElementById("edProvTitulo").textContent = pr ? "Editar proveedor" : "Nuevo proveedor";
+  document.getElementById("edProvNombre").value = pr ? pr.nombre : "";
+  document.getElementById("edProvContacto").value = pr ? pr.contacto : "";
+  document.getElementById("edProvEmail").value = pr ? pr.email : "";
+  document.getElementById("edProvTel").value = pr ? pr.telefono : "";
+  document.getElementById("edProvCond").value = pr && pr.condicionPagoDiasHabitual != null ? pr.condicionPagoDiasHabitual : "";
+  document.getElementById("edProvEstado").value = pr ? pr.estado : "Activo";
+  document.getElementById("edProvNotas").value = pr ? pr.notas : "";
+  const wrap = document.getElementById("edProvCategoriaWrap");
+  const actual = pr ? pr.categoria : "";
+  wrap.innerHTML = `<input type="text" id="edProvCategoria" value="${escapeHtml(actual)}" />`;
+  abrirModal("overlayEditarProveedor");
+  const ops = await opcionesColumna("Proveedores", "Categor_x00ed_a_x0020__x002f__x0");
+  if(ops && ops.length){
+    const lista = actual && !ops.includes(actual) ? [actual, ...ops] : ops;
+    wrap.innerHTML = `<select id="edProvCategoria"><option value="">— sin categoría —</option>${lista.map(o=>`<option value="${escapeHtml(o)}" ${o===actual?"selected":""}>${escapeHtml(o)}</option>`).join("")}</select>`;
+  }
+}
+
+async function guardarProveedorSp(pr, datos){
+  // datos: {nombre, categoria, contacto, email, telefono, cond, estado, notas}
+  const campos = { Title: datos.nombre, Estado: datos.estado };
+  if(datos.categoria !== undefined) campos["Categor_x00ed_a_x0020__x002f__x0"] = datos.categoria || null;
+  if(datos.contacto !== undefined) campos.Contacto_x0020_principal = datos.contacto;
+  if(datos.email !== undefined) campos.Email_x0020_contacto = datos.email;
+  if(datos.telefono !== undefined) campos["Tel_x00e9_fono_x0020_contacto"] = datos.telefono;
+  if(datos.cond !== undefined) campos["Condici_x00f3_n_x0020_de_x0020_p"] = datos.cond;
+  if(datos.notas !== undefined) campos.Notas = datos.notas;
+  if(pr){
+    await actualizarItem("Proveedores", pr.id, campos);
+    Object.assign(pr, { nombre:datos.nombre, estado:datos.estado });
+    if(datos.categoria !== undefined) pr.categoria = datos.categoria;
+    if(datos.contacto !== undefined) pr.contacto = datos.contacto;
+    if(datos.email !== undefined) pr.email = datos.email;
+    if(datos.telefono !== undefined) pr.telefono = datos.telefono;
+    if(datos.cond !== undefined) pr.condicionPagoDiasHabitual = datos.cond;
+    if(datos.notas !== undefined) pr.notas = datos.notas;
+    return pr;
+  }
+  Object.keys(campos).forEach(k=>{ if(campos[k]===null || campos[k]==="") delete campos[k]; });
+  const r = await crearItem("Proveedores", campos);
+  const nuevo = { id:Number(r.id), nombre:datos.nombre, categoria:datos.categoria||"", contacto:datos.contacto||"", email:datos.email||"", telefono:datos.telefono||"", condicionPagoDiasHabitual:datos.cond ?? null, estado:datos.estado, notas:datos.notas||"" };
+  proveedores.push(nuevo);
+  return nuevo;
+}
+
+async function guardarEditarProveedor(){
+  const nombre = nv("edProvNombre");
+  if(!nombre){ mostrarToast("⚠ Ingresá el nombre del proveedor"); return; }
+  const dup = proveedores.find(p=>p.nombre.toLowerCase()===nombre.toLowerCase() && p.id !== ctxEditProv.id);
+  if(dup){ mostrarToast("⚠ Ya existe un proveedor con ese nombre"); return; }
+  const condTxt = nv("edProvCond");
+  const datos = { nombre, categoria:nv("edProvCategoria"), contacto:nv("edProvContacto"), email:nv("edProvEmail"), telefono:nv("edProvTel"),
+                  cond: condTxt === "" ? null : Number(condTxt), estado:document.getElementById("edProvEstado").value, notas:nv("edProvNotas") };
+  const btn = document.getElementById("btnGuardarProv"); btn.disabled = true;
+  try{
+    const pr = ctxEditProv.id ? proveedores.find(x=>x.id===ctxEditProv.id) : null;
+    const nombreAnterior = pr ? pr.nombre : null;
+    const res = await guardarProveedorSp(pr, datos);
+    // Mantener el texto "Proveedor" de los pagos en SharePoint alineado con el nombre nuevo
+    if(pr && nombreAnterior !== nombre){
+      ordenesCompra.filter(o=>o.proveedorId===res.id).forEach(o=>{ o.proveedor = nombre; guardarCampoOrdenProv(o, { Proveedor: nombre }); });
+    }
+    cerrarModal("overlayEditarProveedor");
+    mostrarToast(pr ? "✓ Proveedor actualizado" : "✓ Proveedor creado");
+    refrescarTodoTrasEditar();
+  } catch(e){
+    console.error(e); mostrarToast("⚠ No se pudo guardar el proveedor en SharePoint — revisá la consola");
+  } finally { btn.disabled = false; }
+}
+
+// ---- Pagos a proveedor (ítem, detalle, monto, proveedor / "a definir") ----
+let ctxEditOrden = null;
+function abrirEditarOrden(oid){
+  const o = ordenById(oid);
+  ctxEditOrden = { oid };
+  document.getElementById("edOrdMeta").textContent = o.proyecto;
+  const actualId = esADefinir(o) ? null : o.proveedorId;
+  const provs = proveedores
+    .filter(p => p.nombre.toLowerCase() !== PROV_A_DEFINIR.toLowerCase() && (p.estado !== "Inactivo" || p.id === actualId))
+    .sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const sel = document.getElementById("edOrdProv");
+  sel.innerHTML = `<option value="__definir__">⏳ A definir (estimado, sin proveedor)</option>` +
+    provs.map(p=>`<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join("") +
+    `<option value="__nuevo__">➕ Nuevo proveedor…</option>`;
+  sel.value = actualId ? String(actualId) : "__definir__";
+  sel.onchange = ()=>{ document.getElementById("edOrdNuevoWrap").style.display = sel.value==="__nuevo__" ? "block" : "none"; };
+  sel.onchange();
+  document.getElementById("edOrdProvNuevo").value = "";
+  document.getElementById("edOrdItem").value = o.item;
+  document.getElementById("edOrdDetalle").value = o.detalle || "";
+  document.getElementById("edOrdMonto").value = o.monto != null ? o.monto : "";
+  document.getElementById("edOrdPct").value = o.pct != null ? o.pct : "";
+  abrirModal("overlayEditarOrden");
+}
+
+async function guardarEditarOrden(){
+  const o = ordenById(ctxEditOrden.oid);
+  const btn = document.getElementById("btnGuardarOrden"); btn.disabled = true;
+  try{
+    const val = document.getElementById("edOrdProv").value;
+    let prov;
+    if(val === "__nuevo__"){
+      const nombre = nv("edOrdProvNuevo");
+      if(!nombre){ mostrarToast("⚠ Ingresá el nombre del proveedor nuevo"); return; }
+      prov = proveedores.find(p=>p.nombre.toLowerCase()===nombre.toLowerCase())
+          || await guardarProveedorSp(null, { nombre, estado:"Activo" });
+    } else if(val === "__definir__"){
+      prov = proveedores.find(p=>p.nombre.toLowerCase()===PROV_A_DEFINIR.toLowerCase())
+          || await guardarProveedorSp(null, { nombre:PROV_A_DEFINIR, estado:"Activo" });
+    } else {
+      prov = proveedores.find(p=>String(p.id)===val);
+    }
+    const item = nv("edOrdItem");
+    if(!item){ mostrarToast("⚠ Ingresá el ítem o servicio"); return; }
+    const montoTxt = nv("edOrdMonto"), pctTxt = nv("edOrdPct");
+    const monto = montoTxt === "" ? null : Number(montoTxt);
+    const pct = pctTxt === "" ? 0 : Number(pctTxt);
+    const detalle = document.getElementById("edOrdDetalle").value.trim();
+    await actualizarItem("Hitos_Pago_Proveedores", o._spId, {
+      Title: `${prov.nombre} — ${item}`.slice(0,250),
+      Proveedor: prov.nombre,
+      "Proveedor_x0020__x0028_normalizaLookupId": prov.id,
+      "Item_x0020__x002f__x0020_Servici": item,
+      "_x0025__x0020_del_x0020_hito": pct,
+      MontoUSD: monto,
+    });
+    Object.assign(o, { proveedorId: prov.id, proveedor: prov.nombre, item, pct, monto });
+    // El detalle va aparte: si la columna "Detalle" todavía no existe en SharePoint, el resto igual se guarda
+    let avisoDetalle = "";
+    if(detalle !== (o.detalle||"")){
+      try{ await actualizarItem("Hitos_Pago_Proveedores", o._spId, { Detalle: detalle }); o.detalle = detalle; }
+      catch(e){ console.error(e); avisoDetalle = " (⚠ el detalle no se guardó: falta crear la columna Detalle en SharePoint)"; }
+    }
+    cerrarModal("overlayEditarOrden");
+    mostrarToast("✓ Pago a proveedor actualizado" + avisoDetalle);
+    refrescarTodoTrasEditar();
+  } catch(e){
+    console.error(e); mostrarToast("⚠ No se pudo guardar en SharePoint — revisá la consola");
+  } finally { btn.disabled = false; }
+}
+
+// ---- Clientes (por proyecto, y renombrar en todos) ----
+let ctxEditCli = null;
+function abrirEditarCliente(pid){
+  const p = proyectos.find(x=>x.id===pid);
+  if(!p) return;
+  ctxEditCli = { pid, clienteOriginal: p.cliente };
+  const otros = proyectos.filter(x=>x.cliente===p.cliente && x.id!==p.id);
+  document.getElementById("edCliMeta").textContent = p.nombre;
+  document.getElementById("edCliNombre").value = p.cliente;
+  document.getElementById("edCliRazon").value = p.clienteRazonSocial === p.cliente ? "" : (p.clienteRazonSocial||"");
+  document.getElementById("edCliIdFiscal").value = p.clienteIdFiscal || "";
+  document.getElementById("edCliDir").value = p.clienteDireccionFiscal || "";
+  document.getElementById("edCliEmail").value = p.clienteEmailFacturacion || "";
+  const chk = document.getElementById("edCliAplicarOtros");
+  chk.checked = false; chk.disabled = otros.length === 0;
+  document.getElementById("edCliAplicarLbl").textContent = otros.length
+    ? `Aplicar razón social, ID fiscal, dirección y email a los otros ${otros.length} proyecto(s) de «${p.cliente}»`
+    : `«${p.cliente}» no tiene otros proyectos`;
+  const total = otros.length + 1;
+  document.getElementById("edCliRenLbl").textContent = `Renombrar «${p.cliente}» en sus ${total} proyecto(s)`;
+  document.getElementById("edCliRenNuevo").value = "";
+  document.getElementById("btnRenombrarCli").textContent = `Renombrar en los ${total} proyecto(s)`;
+  abrirModal("overlayEditarCliente");
+}
+
+function camposClienteSp(p){
+  return { Cliente:p.cliente, ClienteRazonSocial:p.clienteRazonSocial, ClienteIdFiscal:p.clienteIdFiscal,
+           ClienteDireccionFiscal:p.clienteDireccionFiscal, ClienteEmailFacturacion:p.clienteEmailFacturacion };
+}
+
+async function guardarEditarCliente(){
+  const p = proyectos.find(x=>x.id===ctxEditCli.pid);
+  const nombre = nv("edCliNombre");
+  if(!nombre){ mostrarToast("⚠ El cliente no puede quedar vacío"); return; }
+  const razon = nv("edCliRazon"), idf = nv("edCliIdFiscal"), dir = nv("edCliDir"), email = nv("edCliEmail");
+  const aplicar = document.getElementById("edCliAplicarOtros").checked;
+  const btn = document.getElementById("btnGuardarCli"); btn.disabled = true;
+  try{
+    const destinos = aplicar ? proyectos.filter(x=>x.cliente===ctxEditCli.clienteOriginal) : [p];
+    for(const d of destinos){
+      if(d === p) d.cliente = nombre;
+      d.clienteRazonSocial = razon || d.cliente; d.clienteIdFiscal = idf; d.clienteDireccionFiscal = dir; d.clienteEmailFacturacion = email;
+      await actualizarItem("Proyectos_ERP", d._spId, { ...camposClienteSp(d), ClienteRazonSocial: razon });
+    }
+    cerrarModal("overlayEditarCliente");
+    mostrarToast(destinos.length > 1 ? `✓ Datos del cliente guardados en ${destinos.length} proyectos` : "✓ Cliente actualizado");
+    refrescarTodoTrasEditar();
+    if(proyectoModalId) refrescarModalProyecto();
+  } catch(e){
+    console.error(e); mostrarToast("⚠ No se pudo guardar en SharePoint — revisá la consola");
+  } finally { btn.disabled = false; }
+}
+
+async function renombrarClienteEnTodos(){
+  const desde = ctxEditCli.clienteOriginal, hacia = nv("edCliRenNuevo");
+  if(!hacia){ mostrarToast("⚠ Escribí el nombre nuevo del cliente"); return; }
+  if(hacia === desde){ mostrarToast("El nombre nuevo es igual al actual"); return; }
+  const btn = document.getElementById("btnRenombrarCli"); btn.disabled = true;
+  try{
+    const destinos = proyectos.filter(x=>x.cliente===desde);
+    for(const d of destinos){
+      await actualizarItem("Proyectos_ERP", d._spId, { Cliente: hacia });
+      if(d.clienteRazonSocial === desde) d.clienteRazonSocial = hacia;
+      d.cliente = hacia;
+    }
+    cerrarModal("overlayEditarCliente");
+    mostrarToast(`✓ «${desde}» renombrado a «${hacia}» en ${destinos.length} proyecto(s)`);
+    refrescarTodoTrasEditar();
+    if(proyectoModalId) refrescarModalProyecto();
+  } catch(e){
+    console.error(e); mostrarToast("⚠ No se pudo renombrar en SharePoint — revisá la consola (puede haber quedado a medias)");
+    refrescarTodoTrasEditar();
+  } finally { btn.disabled = false; }
+}
 
 // =====================================================================
 // Navegación entre módulos (pestañas) y modales
