@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<title>ERP Sunset (Prototipo)</title>
+<title>ERP Sunset</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{
@@ -213,7 +213,7 @@
   #userBadge{font-size:12px;opacity:.9;display:flex;align-items:center;gap:10px;}
   #userBadge button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;}
 </style>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
@@ -319,7 +319,7 @@
     </div>
 
     <div class="spacer"></div>
-    <div style="font-size:11px;opacity:.7;">Prototipo — datos de ejemplo, no conectado a SharePoint.</div>
+    <div style="font-size:11px;opacity:.7;">Conectado a SharePoint (VENTAS).</div>
   </aside>
 
   <div class="contenido">
@@ -614,6 +614,27 @@ async function resolverSiteId(){
   const data = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${SITE_PATH}`);
   siteIdCache = data.id;
   return siteIdCache;
+}
+
+// ---- Sitio ADMINISTRACION-Facturacion (carpetas Facturas / PO) ----
+const SITE_PATH_ADMIN = "sunsettechnology567.sharepoint.com:/sites/ADMINISTRACION-Facturacin";
+let siteIdAdminCache = null;
+
+async function resolverSiteIdAdmin(){
+  if(siteIdAdminCache) return siteIdAdminCache;
+  const data = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${SITE_PATH_ADMIN}`);
+  siteIdAdminCache = data.id;
+  return siteIdAdminCache;
+}
+
+async function subirArchivoAdmin(carpeta, nombreArchivo, arrayBuffer){
+  const siteId = await resolverSiteIdAdmin();
+  const ruta = `${carpeta}/${encodeURIComponent(nombreArchivo)}`;
+  return graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${ruta}:/content`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/pdf" },
+    body: arrayBuffer,
+  });
 }
 
 async function resolverListaId(nombre){
@@ -1737,7 +1758,7 @@ function _formatoMoneda(monto, filial){
   return `${f.monedaSimbolo} ${monto.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 }
 
-function generarPDFFactura({filial, numero, fecha, concepto, monto, impuestoPct, proyecto}){
+async function generarPDFFactura({filial, numero, fecha, concepto, monto, impuestoPct, proyecto}){
   const f = FILIALES[filial];
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"mm", format:"a4" });
@@ -1819,10 +1840,18 @@ function generarPDFFactura({filial, numero, fecha, concepto, monto, impuestoPct,
   doc.text("Documento proforma generado desde el ERP de Sunset — no reemplaza el comprobante fiscal", xMain, 280, {maxWidth:130});
   doc.text(`${filial}, ${fecha ? fecha.split("-").reverse().join(".") : ""}`, 200, 286, {align:"right"});
 
-  doc.save(`${numero.replace("/","-")} - ${(proyecto.cliente||"cliente").replace(/[\\/:*?"<>|]/g,"")} - ${(proyecto.nombre||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`);
+  const nombreArchivo = `${numero.replace("/","-")} - ${(proyecto.cliente||"cliente").replace(/[\\/:*?"<>|]/g,"")} - ${(proyecto.nombre||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`;
+  doc.save(nombreArchivo);
+  try{
+    await subirArchivoAdmin("Facturas", nombreArchivo, doc.output("arraybuffer"));
+    mostrarToast(`✓ Subida a SharePoint (Administración → Facturación → Facturas)`);
+  } catch(e){
+    console.error(e);
+    mostrarToast(`⚠ El PDF se descargó pero no se pudo subir a SharePoint automáticamente — subilo a mano a la carpeta Facturas`);
+  }
 }
 
-function generarPDFPO({filial, numero, fecha, concepto, monto, impuestoPct, orden}){
+async function generarPDFPO({filial, numero, fecha, concepto, monto, impuestoPct, orden}){
   const f = FILIALES[filial];
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"mm", format:"a4" });
@@ -1889,7 +1918,15 @@ function generarPDFPO({filial, numero, fecha, concepto, monto, impuestoPct, orde
   doc.text("Please reference the PO number on all invoices and correspondence.", 12, 280, {maxWidth:120});
   doc.text(`${filial}, ${fecha ? fecha.split("-").reverse().join(".") : ""}`, 200, 286, {align:"right"});
 
-  doc.save(`${numero.replace("/","-")} - ${(orden.proveedor||"proveedor").replace(/[\\/:*?"<>|]/g,"")} - ${(orden.item||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`);
+  const nombreArchivo = `${numero.replace("/","-")} - ${(orden.proveedor||"proveedor").replace(/[\\/:*?"<>|]/g,"")} - ${(orden.item||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`;
+  doc.save(nombreArchivo);
+  try{
+    await subirArchivoAdmin("PO", nombreArchivo, doc.output("arraybuffer"));
+    mostrarToast(`✓ Subida a SharePoint (Administración → Facturación → PO)`);
+  } catch(e){
+    console.error(e);
+    mostrarToast(`⚠ El PDF se descargó pero no se pudo subir a SharePoint automáticamente — subilo a mano a la carpeta PO`);
+  }
 }
 
 function renderEstadisticasWrap(){
