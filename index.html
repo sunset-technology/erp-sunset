@@ -210,12 +210,28 @@
   #loginGate button:disabled{opacity:.6;cursor:default;}
   #loginGate .msg{font-size:13px;opacity:.85;margin-top:14px;max-width:380px;}
   #loginGate .err{color:#FFD6D0;font-size:12.5px;margin-top:12px;max-width:420px;}
+  html.es-popup #loginGate > *:not(.logo-login){display:none;}
+  html.es-popup #loginGate::after{content:"Procesando inicio de sesión…";font-size:14px;opacity:.9;margin-top:6px;}
   #appRoot{display:none;flex-direction:column;flex:1 1 auto;min-height:0;}
   #userBadge{font-size:12px;opacity:.9;display:flex;align-items:center;gap:10px;}
   #userBadge button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// Si esta página se abrió como ventana emergente del login de Microsoft (vuelve con #code=...),
+// no cargamos MSAL ni la app: solo la ventana de origen necesita leer el resultado. Se autocierra.
+(function(){
+  var esPopup = false;
+  try{ esPopup = !!(window.opener && window.opener !== window && /(^|[#&?])(code|error|state)=/.test(location.hash + location.search)); }catch(e){}
+  window.__ES_POPUP = esPopup;
+  if(esPopup){
+    document.documentElement.className += " es-popup";
+    setTimeout(function(){ try{ window.close(); }catch(e){} }, 3000);
+  } else {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js" crossorigin="anonymous"><\/script>');
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>');
+  }
+})();
+</script>
 </head>
 <body>
 <div id="loginGate">
@@ -294,6 +310,22 @@
       <button class="btn-limpiar" id="btnLimpiarDot">Limpiar filtros</button>
     </div>
 
+    <!-- Filtros: Facturación (Clientes y Proveedores) -->
+    <div id="panelFiltrosFact" style="display:none;">
+      <label>Filial</label>
+      <select id="fFactFilial"><option value="">Todas</option></select>
+
+      <div id="filtrosFactClientes">
+        <label>Cliente</label>
+        <select id="fFactCliente"><option value="">Todos</option></select>
+
+        <label>Año de facturación</label>
+        <select id="fFactAnio"><option value="">Todos</option></select>
+
+        <button class="btn-limpiar" id="btnLimpiarFact">Limpiar filtros</button>
+      </div>
+    </div>
+
     <!-- Filtros: Compras -->
     <div id="panelFiltrosCom" style="display:none;">
       <label>Buscar</label>
@@ -310,12 +342,6 @@
       </select>
 
       <button class="btn-limpiar" id="btnLimpiarCom">Limpiar filtros</button>
-    </div>
-
-    <!-- Filtros: Facturación (Clientes y Proveedores) -->
-    <div id="panelFiltrosFact" style="display:none;">
-      <label>Filial</label>
-      <select id="fFactFilial"><option value="">Todas</option></select>
     </div>
 
     <div class="spacer"></div>
@@ -539,7 +565,7 @@ function addDiasISO(fechaISO, dias){
   dt.setUTCDate(dt.getUTCDate() + Number(dias));
   return dt.toISOString().slice(0,10);
 }
-const HOY_ISO = "2026-08-26"; // fecha de referencia del prototipo
+const HOY_ISO = (()=>{ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); })(); // hoy (fecha local)
 function abrirModal(id){ document.getElementById(id).classList.add("show"); }
 function cerrarModal(id){ document.getElementById(id).classList.remove("show"); }
 function mostrarToast(msg){
@@ -697,6 +723,7 @@ async function cargarDatosERP(){
   ]);
 
   const camposDe = it => it.fields || {};
+  const num = v => (v==null || v==="") ? null : Number(v); // Graph devuelve los IDs de lookup como texto
   const soloFecha = v => (v ? String(v).slice(0,10) : null);
 
   // --- Proveedores ---
@@ -754,8 +781,8 @@ async function cargarDatosERP(){
       motivo: c.Motivo || "",
       fecha: soloFecha(it.lastModifiedDateTime) || soloFecha(c.Created),
     };
-    const hitoLookupId = c.HitoLookupId;
-    const hitoProvLookupId = c["Hito_x0020_ProveedorLookupId"];
+    const hitoLookupId = num(c.HitoLookupId);
+    const hitoProvLookupId = num(c["Hito_x0020_ProveedorLookupId"]);
     if(hitoLookupId){
       if(!historialPorHito.has(hitoLookupId)) historialPorHito.set(hitoLookupId, []);
       historialPorHito.get(hitoLookupId).push(ev);
@@ -769,7 +796,7 @@ async function cargarDatosERP(){
   // --- Hitos de facturación a cliente (colgados del proyecto correspondiente) ---
   itemsHitosFact.forEach(it=>{
     const c = camposDe(it);
-    const p = proyectoPorSpId.get(c.ProyectoLookupId);
+    const p = proyectoPorSpId.get(num(c.ProyectoLookupId));
     if(!p) return;
     const spId = Number(it.id);
     p.hitos.push({
@@ -816,9 +843,9 @@ async function cargarDatosERP(){
   // --- Asignaciones a proyectos (comprometido) ---
   itemsAsignaciones.forEach(it=>{
     const c = camposDe(it);
-    const ing = ingenieroPorSpId.get(c.IngenieroLookupId);
+    const ing = ingenieroPorSpId.get(num(c.IngenieroLookupId));
     if(!ing) return;
-    const proy = proyectoPorSpId.get(c.ProyectoLookupId);
+    const proy = proyectoPorSpId.get(num(c.ProyectoLookupId));
     ing.asignaciones.push({
       proyecto: proy ? proy.nombre : (c.Proyecto && c.Proyecto.LookupValue) || "",
       rolProyecto: c["Rol_x0020_en_x0020_el_x0020_proy"] || "",
@@ -840,7 +867,7 @@ async function cargarDatosERP(){
     const nombreIng = c["Ingeniero_x0020__x0028_texto_x00"] || "";
     const ing = ingenieroPorNombre.get(nombreIng);
     if(!ing) return;
-    const op = oportunidadPorSpId.get(c.OportunidadLookupId) || {};
+    const op = oportunidadPorSpId.get(num(c.OportunidadLookupId)) || {};
     ing.pipeline.push({
       oportunidad: op.nombre || (c.Oportunidad && c.Oportunidad.LookupValue) || "",
       cliente: op.cliente || "",
@@ -855,8 +882,8 @@ async function cargarDatosERP(){
   itemsHitosProv.forEach(it=>{
     const c = camposDe(it);
     const spId = Number(it.id);
-    const proy = proyectoPorSpId.get(c.ProyectoLookupId);
-    const prov = proveedorPorSpId.get(c["Proveedor_x0020__x0028_normalizaLookupId"]);
+    const proy = proyectoPorSpId.get(num(c.ProyectoLookupId));
+    const prov = proveedorPorSpId.get(num(c["Proveedor_x0020__x0028_normalizaLookupId"]));
     ordenesCompra.push({
       id: spId,
       _spId: spId,
@@ -872,6 +899,7 @@ async function cargarDatosERP(){
       pago: soloFecha(c.Fecha_x0020_de_x0020_pago),
       poEnviada: !!c.PO_x0020_enviada,
       poNumero: c.NumeroPO || "",
+      monto: c.MontoUSD ?? null,
       facturaProveedor: c["Factura_x0020_del_x0020_proveedo"] || "",
       facturaPagada: !!c.Factura_x0020_pagada,
       fechaPagoReal: soloFecha(c["Fecha_x0020_de_x0020_pago_x0020_"]),
@@ -1071,7 +1099,7 @@ const FILIALES = {
 let proyectos = []; // Proyectos_ERP + Hitos_Facturacion — cargado desde SharePoint, ver cargarDatosERP()
 
 function facturaSinAviso(h){
-  return !h.facturaEnviada && parseISO(h.fact) < parseISO(HOY_ISO);
+  return !h.facturaEnviada && !!h.fact && parseISO(h.fact) < parseISO(HOY_ISO);
 }
 
 // El PM marcó el hito como cumplido (producto/servicio entregado / aprobado por el cliente) pero Administración todavía no facturó.
@@ -1442,15 +1470,32 @@ function cambiarFacturacionSubvista(v){
 }
 
 let filtroFilialFacturacion = "";
+let filtroClienteFacturacion = "";
+let filtroAnioFacturacion = "";
 
 function renderFiltroFilialFacturacion(){
-  const filiales = Object.keys(FILIALES);
-  const sel = document.getElementById("fFactFilial");
-  sel.innerHTML = `
-    <option value="">Todas</option>
-    ${filiales.map(f=>`<option value="${escapeHtml(f)}" ${filtroFilialFacturacion===f?"selected":""}>${escapeHtml(f)}</option>`).join("")}
-  `;
-  sel.onchange = e=>{ filtroFilialFacturacion = e.target.value; renderFacturacion(); };
+  // Filial (lista fija)
+  const selF = document.getElementById("fFactFilial");
+  selF.innerHTML = `<option value="">Todas</option>` +
+    Object.keys(FILIALES).map(f=>`<option value="${escapeHtml(f)}" ${filtroFilialFacturacion===f?"selected":""}>${escapeHtml(f)}</option>`).join("");
+  selF.onchange = e=>{ filtroFilialFacturacion = e.target.value; renderFacturacion(); };
+
+  // Cliente y año: solo aplican a Facturación a Clientes
+  document.getElementById("filtrosFactClientes").style.display = facturacionSubvista==="clientes" ? "block" : "none";
+  const clientes = [...new Set(proyectos.filter(p=>p.hitos.length).map(p=>p.cliente).filter(Boolean))].sort();
+  const anios = [...new Set(proyectos.flatMap(p=>p.hitos.map(h=>h.fact ? h.fact.slice(0,4) : null)).filter(Boolean))].sort().reverse();
+  const selC = document.getElementById("fFactCliente");
+  selC.innerHTML = `<option value="">Todos</option>` +
+    clientes.map(c=>`<option value="${escapeHtml(c)}" ${filtroClienteFacturacion===c?"selected":""}>${escapeHtml(c)}</option>`).join("");
+  selC.onchange = e=>{ filtroClienteFacturacion = e.target.value; renderFacturacionClientes(); };
+  const selA = document.getElementById("fFactAnio");
+  selA.innerHTML = `<option value="">Todos</option>` +
+    anios.map(a=>`<option value="${a}" ${filtroAnioFacturacion===a?"selected":""}>${a}</option>`).join("");
+  selA.onchange = e=>{ filtroAnioFacturacion = e.target.value; renderFacturacionClientes(); };
+  document.getElementById("btnLimpiarFact").onclick = ()=>{
+    filtroFilialFacturacion = ""; filtroClienteFacturacion = ""; filtroAnioFacturacion = "";
+    renderFacturacion();
+  };
 }
 
 function actualizarPanelFiltroCompras(){
@@ -1473,8 +1518,17 @@ function renderFacturacion(){
 
 function renderFacturacionClientes(){
   const cont = document.getElementById("vistaFacturacion");
-  const proyectosConHitos = proyectos.filter(p=>p.hitos.length && (!filtroFilialFacturacion || p.filial===filtroFilialFacturacion));
-  if(!proyectosConHitos.length){ cont.innerHTML = `<div class="empty-state">No hay hitos de facturación cargados.</div>`; return; }
+  const hitosVisibles = p => p.hitos.filter(h=>!filtroAnioFacturacion || (h.fact && h.fact.slice(0,4)===filtroAnioFacturacion));
+  const proyectosConHitos = proyectos.filter(p=>
+    p.hitos.length &&
+    (!filtroFilialFacturacion || p.filial===filtroFilialFacturacion) &&
+    (!filtroClienteFacturacion || p.cliente===filtroClienteFacturacion) &&
+    hitosVisibles(p).length);
+  if(!proyectosConHitos.length){
+    const hayFiltros = filtroFilialFacturacion || filtroClienteFacturacion || filtroAnioFacturacion;
+    cont.innerHTML = `<div class="empty-state">${hayFiltros ? "No hay hitos de facturación que coincidan con los filtros." : "No hay hitos de facturación cargados."}</div>`;
+    return;
+  }
   cont.innerHTML = proyectosConHitos.map(p=>`
     <div class="seccion-proyecto-fact">
       <div class="seccion-proyecto-fact-head">
@@ -1496,7 +1550,7 @@ function renderFacturacionClientes(){
             <th>Factura cobrada</th>
           </tr></thead>
           <tbody>
-            ${p.hitos.map(h=>`
+            ${hitosVisibles(p).map(h=>`
             <tr class="${facturaSinAviso(h)||facturaSinCobrar(h)||hitoSinCumplirVencido(h)?'fila-alerta':''}">
               <td class="col-desc">${escapeHtml(h.desc)}</td>
               <td>${escapeHtml(h.tipo)}</td>
@@ -1612,6 +1666,7 @@ function renderFacturacionProveedores(){
         <table class="hitos hitos-prov">
           <thead><tr>
             <th class="col-desc">Proveedor / Ítem</th>
+            <th>Monto (USD)</th>
             <th>%</th>
             <th>Fecha envío PO</th>
             <th>Fecha de pago</th>
@@ -1631,6 +1686,7 @@ function renderFacturacionProveedores(){
                 <strong${o.proveedorId?` style="cursor:pointer;text-decoration:underline dotted;" onclick="abrirProveedor('${o.proveedorId}')" title="Ver ficha del proveedor"`:''}>${escapeHtml(o.proveedor)}</strong>
                 <div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)}</div>
               </td>
+              <td>${o.monto!=null?"$"+o.monto.toLocaleString("es-AR"):"—"}</td>
               <td>${o.pct}%</td>
               <td>${fmt(o.envioPO)}</td>
               <td>${fmt(o.pago)} ${alarma?`<span class="estado ${estado}" title="${escapeHtml(tituloEstadoOrden(o))}">${iconoEstadoOrden(o)}</span>`:''}</td>
@@ -1727,7 +1783,7 @@ function abrirGenerarPO(oid){
   document.getElementById("genDocNumero").value = numeroSugeridoPO(filial);
   document.getElementById("genDocFecha").value = new Date().toISOString().slice(0,10);
   document.getElementById("genDocConcepto").value = o.item;
-  document.getElementById("genDocMonto").value = "";
+  document.getElementById("genDocMonto").value = o.monto != null ? o.monto : "";
   document.getElementById("genDocImpuestoPct").value = 0;
   abrirModal("overlayGenerarDoc");
 }
