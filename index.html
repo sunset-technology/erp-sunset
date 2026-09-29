@@ -1,0 +1,2597 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>ERP Sunset (Prototipo)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --azul-sunset:#1A8694;
+    --azul-oscuro:#125F69;
+    --header-select-bg:#0F5860;
+    --header-select-border:#2CA3B0;
+    --badge-bg:#E3F2F3;
+    --fondo:#F4F7F8;
+    --texto:#1E2A2E;
+    --gris:#666;
+    --gris-claro:#DDE4E6;
+    --blanco:#fff;
+    --ok:#1E8E3E;
+    --warn:#B8860B;
+    --danger:#C0392B;
+    --pend:#6b7280;
+    --reservado:#9BB8BC;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--fondo);color:var(--texto);display:flex;flex-direction:column;min-height:100vh;}
+
+  /* Banner superior con marca */
+  .topbar{background:var(--azul-sunset);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:16px 28px;}
+  .topbar .titulo-app h1{margin:0;font-size:19px;font-weight:700;}
+  .topbar .titulo-app p{margin:3px 0 0;font-size:12px;opacity:.85;}
+  .logo-sunset{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
+  .logo-sunset svg{width:32px;height:32px;flex:0 0 auto;}
+  .logo-sunset .logo-texto{text-align:right;line-height:1.2;}
+  .logo-sunset .logo-texto .l1{font-size:16px;font-weight:800;letter-spacing:.03em;}
+  .logo-sunset .logo-texto .l2{font-size:9px;font-weight:600;letter-spacing:.2em;opacity:.85;}
+
+  .topbar{flex:0 0 auto;}
+  .app{display:flex;flex:1 1 auto;min-height:0;}
+
+  /* Sidebar */
+  .sidebar{width:230px;flex:0 0 230px;background:var(--azul-sunset);color:#fff;display:flex;flex-direction:column;padding:16px 14px;position:sticky;top:0;align-self:flex-start;height:100%;min-height:100%;overflow-y:auto;}
+  .nav-divider{height:1px;background:rgba(255,255,255,.18);margin:10px 0 12px;}
+  .sidebar label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;opacity:.75;margin:16px 0 6px;display:block;}
+  .sidebar label:first-of-type{margin-top:2px;}
+  .sidebar select, .sidebar input[type=text]{width:100%;padding:7px 8px;border-radius:6px;border:1px solid var(--header-select-border);background:var(--header-select-bg);color:#fff;font-size:13px;margin-bottom:8px;}
+  .sidebar select option{color:#000;}
+  .sidebar input::placeholder{color:#cfe9ec;}
+  .chk-row{display:flex;align-items:center;gap:7px;font-size:12.5px;margin:2px 0 12px;}
+  .btn-limpiar{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:6px;padding:6px 8px;font-size:12px;cursor:pointer;margin-bottom:14px;}
+  .spacer{flex:1;}
+  .badge-vencidos, .badge-alerta{background:#fff;color:var(--danger);font-size:12px;font-weight:700;border-radius:6px;padding:8px 10px;margin-bottom:8px;display:none;}
+  .badge-vencidos.show, .badge-alerta.show{display:block;}
+  .badge-proximo{background:#fff;color:var(--warn);font-size:12px;font-weight:700;border-radius:6px;padding:8px 10px;margin-bottom:8px;display:none;}
+  .badge-proximo.show{display:block;}
+
+  /* Content */
+  .contenido{flex:1;display:flex;flex-direction:column;min-width:0;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--gris-claro);}
+  header .titulo h2{margin:0;font-size:18px;}
+  header .titulo p{margin:2px 0 0;font-size:12px;color:var(--gris);}
+  main{padding:22px 24px 60px;overflow-x:auto;}
+
+  /* Solapas de módulo, estilo navegador (Chrome) */
+  .module-tabs{display:flex;gap:4px;padding:10px 20px 0;background:var(--azul-oscuro);}
+  .module-tab{display:flex;align-items:center;gap:7px;padding:10px 20px;border-radius:9px 9px 0 0;cursor:pointer;font-size:13.5px;color:rgba(255,255,255,.72);}
+  .module-tab:hover{color:#fff;}
+  .module-tab.active{background:var(--fondo);color:var(--texto);font-weight:700;}
+
+  /* Proyecto card (Financiero) */
+  .proyecto{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;margin-bottom:16px;overflow:hidden;}
+  .proyecto-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;cursor:pointer;gap:16px;flex-wrap:wrap;}
+  .proyecto-head:hover{background:#fafcfc;}
+  .proyecto-titulo{display:flex;flex-direction:column;gap:2px;min-width:220px;}
+  .proyecto-titulo .nombre{font-weight:700;font-size:14.5px;}
+  .proyecto-titulo .meta{font-size:12px;color:var(--gris);}
+  .kpis-proyecto{display:flex;gap:22px;flex-wrap:wrap;}
+  .kpi-mini{text-align:center;min-width:90px;}
+  .kpi-mini .valor{font-weight:700;font-size:15px;}
+  .kpi-mini .label{font-size:10.5px;color:var(--gris);text-transform:uppercase;letter-spacing:.03em;}
+  .ver-detalle{font-size:12px;color:var(--azul-oscuro);font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:4px;}
+  .proyecto-head:hover .ver-detalle{text-decoration:underline;}
+
+  table.hitos{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px;}
+  table.hitos th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;color:var(--gris);padding:6px 8px;border-bottom:2px solid var(--gris-claro);white-space:nowrap;}
+  table.hitos td{padding:8px 8px;border-bottom:1px solid #eef1f2;vertical-align:top;}
+  table.hitos tr:last-child td{border-bottom:none;}
+  .col-desc{min-width:150px;}
+  .fecha-par{display:flex;flex-direction:column;gap:2px;white-space:nowrap;}
+  .fecha-par .fac{font-weight:600;}
+  .fecha-par .cob{color:var(--gris);font-size:11.5px;}
+  .desvio{font-weight:700;}
+  .desvio.pos{color:var(--danger);}
+  .desvio.neg{color:var(--ok);}
+  .desvio.zero{color:var(--gris);}
+  .estado{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+  .estado.Pendiente{background:#eef1f2;color:var(--pend);}
+  .estado.Facturado{background:#FDF3D8;color:var(--warn);}
+  .estado.Cobrado{background:#E3F5E8;color:var(--ok);}
+  .estado.Vencido{background:#FBE4E1;color:var(--danger);}
+  .estado.Pagado{background:#E3F5E8;color:var(--ok);}
+  .estado.Proximo{background:#FDF3D8;color:var(--warn);}
+  table.hitos.hitos-prov{margin-top:16px;}
+  .acciones-hito{display:flex;gap:6px;flex-wrap:wrap;}
+  .btn-mini{font-size:11px;padding:4px 8px;border-radius:5px;border:1px solid var(--gris-claro);background:#fff;cursor:pointer;color:var(--azul-oscuro);}
+  .btn-mini:hover{background:var(--badge-bg);}
+  .motivo-chip{font-size:11px;color:var(--gris);font-style:italic;display:block;margin-top:3px;max-width:180px;}
+
+  /* Stat tiles (compartido) */
+  .grid-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px;}
+  .stat-tile{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;padding:16px 18px;}
+  .stat-tile .num{font-size:26px;font-weight:700;color:var(--azul-oscuro);}
+  .stat-tile .lbl{font-size:12px;color:var(--gris);margin-top:4px;}
+  .stat-tile .sub{font-size:11px;color:var(--gris);margin-top:6px;}
+
+  .panel{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;padding:16px 18px;margin-bottom:18px;}
+  .panel h3{margin:0 0 12px;font-size:14px;}
+  .substat-tabs{display:flex;gap:8px;margin-bottom:18px;}
+  .substat-btn{padding:8px 16px;border-radius:20px;border:1px solid var(--gris-claro);background:#fff;font-size:13px;cursor:pointer;color:var(--gris);font-weight:600;}
+  .substat-btn:hover{background:var(--badge-bg);}
+  .substat-btn.active{background:var(--azul-sunset);color:#fff;border-color:var(--azul-sunset);}
+  table.simple{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.simple th{text-align:left;padding:6px 8px;border-bottom:2px solid var(--gris-claro);color:var(--gris);font-size:11px;text-transform:uppercase;}
+  table.simple td{padding:7px 8px;border-bottom:1px solid #eef1f2;vertical-align:top;}
+
+  /* Ingeniero row (Dotación) */
+  .ing{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;margin-bottom:12px;padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+  .ing:hover{background:#fafcfc;}
+  .ing-id{min-width:190px;}
+  .ing-id .nombre{font-weight:700;font-size:14.5px;}
+  .ing-id .meta{font-size:12px;color:var(--gris);margin-top:1px;}
+  .ing-barra-wrap{flex:1;min-width:260px;}
+  .ing-barra-track{position:relative;height:20px;background:#eef1f2;border-radius:5px;overflow:visible;}
+  .ing-barra-comprometida{position:absolute;left:0;top:0;height:100%;background:var(--azul-sunset);border-radius:5px 0 0 5px;}
+  .ing-barra-reservada{position:absolute;top:0;height:100%;background:repeating-linear-gradient(45deg,var(--reservado),var(--reservado) 5px,#c9dbdd 5px,#c9dbdd 10px);}
+  .marca-100{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--gris);opacity:.55;}
+  .ing-barra-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--gris);margin-top:4px;}
+  .ing-nums{display:flex;gap:16px;min-width:230px;}
+  .ing-num{text-align:center;min-width:60px;}
+  .ing-num .v{font-weight:700;font-size:14.5px;}
+  .ing-num .l{font-size:10px;color:var(--gris);text-transform:uppercase;letter-spacing:.02em;}
+  .estado-badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
+  .estado-badge.ok{background:#E3F5E8;color:var(--ok);}
+  .estado-badge.riesgo{background:#FDF3D8;color:var(--warn);}
+  .estado-badge.sobrecargado{background:#FBE4E1;color:var(--danger);}
+  .leyenda{display:flex;gap:18px;align-items:center;font-size:11.5px;color:var(--gris);margin-bottom:14px;}
+  .leyenda .sw{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
+  .panel-modal{margin-top:18px;}
+  .panel-modal h4{margin:0 0 8px;font-size:13px;color:var(--azul-oscuro);}
+  table.hitos thead tr:first-child th{border-bottom:none;}
+  table.hitos thead tr:last-child th{border-top:none;padding-top:2px;font-weight:600;color:var(--gris);}
+  .fila-notas-hito td{background:#fafcfc;border-top:none !important;}
+  .notas-hito{width:100%;padding:6px 8px;border:1px solid var(--gris-claro);border-radius:6px;font-size:12.5px;background:#fff;color:var(--texto);resize:vertical;font-family:inherit;}
+  .seccion-proyecto-fact{margin-bottom:22px;border:1px solid var(--gris-claro);border-radius:10px;overflow:hidden;background:#fff;}
+  .seccion-proyecto-fact-head{background:var(--azul-oscuro);color:#fff;padding:10px 16px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .seccion-proyecto-fact-head .nombre{font-weight:700;font-size:14px;}
+  .seccion-proyecto-fact-head .meta{font-size:12px;opacity:.85;}
+  .seccion-proyecto-fact-body{padding:6px 16px 14px;}
+  .seccion-proyecto-fact table{margin:0;}
+
+  /* Proveedor row (Compras) */
+  .prov{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;margin-bottom:12px;padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+  .prov:hover{background:#fafcfc;}
+  .prov-id{min-width:200px;}
+  .prov-id .nombre{font-weight:700;font-size:14.5px;}
+  .prov-id .meta{font-size:12px;color:var(--gris);margin-top:1px;}
+  .prov-nums{display:flex;gap:16px;flex:1;flex-wrap:wrap;}
+  .prov-num{text-align:center;min-width:90px;}
+  .prov-num .v{font-weight:700;font-size:14.5px;}
+  .prov-num .l{font-size:10px;color:var(--gris);text-transform:uppercase;letter-spacing:.02em;}
+
+  /* Modal (compartido) */
+  .overlay{position:fixed;inset:0;background:rgba(20,30,32,.45);display:none;align-items:center;justify-content:center;z-index:50;}
+  .overlay.show{display:flex;}
+  .modal{background:#fff;border-radius:12px;padding:22px 24px;width:420px;max-width:92vw;max-height:88vh;overflow:auto;}
+  .modal h3{margin:0 0 4px;font-size:16px;}
+  .modal .desc{font-size:12px;color:var(--gris);margin-bottom:16px;}
+  .modal-grande{width:1040px;}
+  .modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+  .modal-header h3{margin:0;font-size:17px;}
+  .modal-header .desc{margin-bottom:0;}
+  .modal-close{background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--gris);padding:2px 8px;border-radius:6px;flex:0 0 auto;}
+  .modal-close:hover{background:#f2f5f5;color:var(--texto);}
+  .campo{margin-bottom:12px;}
+  .campo label{display:block;font-size:12px;font-weight:600;margin-bottom:4px;}
+  .campo input, .campo textarea{width:100%;padding:8px 9px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;background:#fff;color:var(--texto);}
+  .campo textarea{resize:vertical;min-height:60px;}
+  .campo .hint{font-size:11px;color:var(--gris);margin-top:3px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .btn{padding:8px 16px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid transparent;font-weight:600;}
+  .btn-primario{background:var(--azul-sunset);color:#fff;}
+  .btn-primario:hover{background:var(--azul-oscuro);}
+  .btn-secundario{background:#fff;color:var(--texto);border-color:var(--gris-claro);}
+  .btn-secundario:hover{background:#f2f5f5;}
+  .error-campo{color:var(--danger);font-size:11.5px;margin-top:4px;display:none;}
+  .error-campo.show{display:block;}
+
+  .empty-state{text-align:center;padding:60px 20px;color:var(--gris);}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:60;display:none;}
+  .toast.show{display:block;}
+
+  /* Login gate */
+  #loginGate{position:fixed;inset:0;background:var(--azul-oscuro);display:flex;align-items:center;justify-content:center;z-index:100;flex-direction:column;color:#fff;text-align:center;padding:20px;}
+  #loginGate .logo-texto{margin-bottom:22px;}
+  #loginGate .logo-texto .l1{font-size:26px;font-weight:700;letter-spacing:.04em;}
+  #loginGate .logo-texto .l2{font-size:13px;letter-spacing:.12em;opacity:.85;}
+  #loginGate button{margin-top:18px;padding:11px 26px;border-radius:8px;border:none;background:#fff;color:var(--azul-oscuro);font-weight:700;font-size:14px;cursor:pointer;}
+  #loginGate button:disabled{opacity:.6;cursor:default;}
+  #loginGate .msg{font-size:13px;opacity:.85;margin-top:14px;max-width:380px;}
+  #loginGate .err{color:#FFD6D0;font-size:12.5px;margin-top:12px;max-width:420px;}
+  #appRoot{display:none;}
+  #userBadge{font-size:12px;opacity:.9;display:flex;align-items:center;gap:10px;}
+  #userBadge button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;}
+</style>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div id="loginGate">
+  <div class="logo-texto">
+    <div class="l1">SUNSET</div>
+    <div class="l2">TECHNOLOGY</div>
+  </div>
+  <h2 style="margin:0 0 4px;">ERP Sunset</h2>
+  <div class="msg" id="loginMsg">Iniciá sesión con tu cuenta de Sunset Technology para acceder.</div>
+  <button id="btnLogin">Iniciar sesión con Microsoft</button>
+  <div class="err" id="loginErr" style="display:none;"></div>
+</div>
+<div id="appRoot">
+<div class="topbar">
+  <div class="titulo-app">
+    <h1>ERP Sunset</h1>
+    <p>Financiero · Dotación · Compras · Conectado a SharePoint (VENTAS)</p>
+  </div>
+  <div id="userBadge">
+    <span id="userBadgeNombre"></span>
+    <button id="btnLogout">Cerrar sesión</button>
+  </div>
+  <div class="logo-sunset">
+    <!-- TODO: reemplazar por el logo oficial (PNG/SVG) — ver mensaje al usuario -->
+    <div class="logo-texto">
+      <div class="l1">SUNSET</div>
+      <div class="l2">TECHNOLOGY</div>
+    </div>
+  </div>
+</div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="badge-vencidos" id="badgeVencidos"></div>
+    <div class="badge-vencidos" id="badgeHitoSinCumplir"></div>
+    <div class="badge-proximo" id="badgeHitosCumplidos"></div>
+    <div class="badge-vencidos" id="badgeCobroVencido"></div>
+    <div class="badge-alerta" id="badgeAlerta"></div>
+    <div class="badge-vencidos" id="badgeCompras"></div>
+    <div class="badge-proximo" id="badgeProximoProv"></div>
+
+    <!-- Filtros: Financiero -->
+    <div id="panelFiltrosFin">
+      <label>Buscar</label>
+      <input type="text" id="fFinBuscar" placeholder="Proyecto o cliente..." />
+
+      <label>Cliente</label>
+      <select id="fFinCliente"><option value="">Todos</option></select>
+
+      <label>PM</label>
+      <select id="fFinPM"><option value="">Todos</option></select>
+
+      <label>Filial</label>
+      <select id="fFinFilial"><option value="">Todas</option></select>
+
+      <div class="chk-row">
+        <input type="checkbox" id="fFinSoloAlerta" />
+        <label style="margin:0;text-transform:none;letter-spacing:0;opacity:1;font-size:12.5px;" for="fFinSoloAlerta">Solo con factura sin confirmar envío</label>
+      </div>
+
+      <button class="btn-limpiar" id="btnLimpiarFin">Limpiar filtros</button>
+    </div>
+
+    <!-- Filtros: Dotación -->
+    <div id="panelFiltrosDot" style="display:none;">
+      <label>Buscar</label>
+      <input type="text" id="fDotBuscar" placeholder="Nombre o rol..." />
+
+      <label>Sucursal</label>
+      <select id="fDotSucursal"><option value="">Todas</option></select>
+
+      <label>Estado</label>
+      <select id="fDotEstado">
+        <option value="Activo" selected>Activo</option>
+        <option value="">Todos</option>
+        <option value="Inactivo">Inactivo</option>
+      </select>
+
+      <div class="chk-row">
+        <input type="checkbox" id="fDotSoloAlerta" />
+        <label style="margin:0;text-transform:none;letter-spacing:0;opacity:1;font-size:12.5px;" for="fDotSoloAlerta">Solo sobrecargados / en riesgo</label>
+      </div>
+
+      <button class="btn-limpiar" id="btnLimpiarDot">Limpiar filtros</button>
+    </div>
+
+    <!-- Filtros: Compras -->
+    <div id="panelFiltrosCom" style="display:none;">
+      <label>Buscar</label>
+      <input type="text" id="fComBuscar" placeholder="Proveedor..." />
+
+      <label>Categoría</label>
+      <select id="fComCategoria"><option value="">Todas</option></select>
+
+      <label>Estado del proveedor</label>
+      <select id="fComEstado">
+        <option value="Activo" selected>Activo</option>
+        <option value="">Todos</option>
+        <option value="Inactivo">Inactivo</option>
+      </select>
+
+      <button class="btn-limpiar" id="btnLimpiarCom">Limpiar filtros</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div style="font-size:11px;opacity:.7;">Prototipo — datos de ejemplo, no conectado a SharePoint.</div>
+  </aside>
+
+  <div class="contenido">
+    <header>
+      <div class="titulo">
+        <h2 id="tituloVista">Proyectos</h2>
+        <p id="subtituloVista">Plan Comercial vs. Plan Vigente vs. Real, por hito de facturación</p>
+      </div>
+    </header>
+    <div class="module-tabs">
+      <div class="module-tab active" data-vista="proyectos">🗂️ Proyectos</div>
+      <div class="module-tab" data-vista="facturacion">🧾 Facturación</div>
+      <div class="module-tab" data-vista="ingenieros">🧑‍💻 Ingenieros</div>
+      <div class="module-tab" data-vista="estadisticas" data-roles="gerencia,administracion">📊 Estadísticas</div>
+    </div>
+    <main>
+      <div id="vistaProyectos"></div>
+      <div id="vistaFacturacionWrap" style="display:none;">
+        <div class="substat-tabs">
+          <button class="substat-btn" id="btnFactClientes" onclick="cambiarFacturacionSubvista('clientes')">💰 Facturación a Clientes</button>
+          <button class="substat-btn" id="btnFactProveedores" onclick="cambiarFacturacionSubvista('proveedores')">🚚 Facturación a Proveedores</button>
+        </div>
+        <div class="grid-stats" id="kpisTopCom" style="display:none;"></div>
+        <div id="vistaFacturacion"></div>
+      </div>
+      <div id="vistaEstadisticas" style="display:none;"></div>
+      <div id="vistaIngenierosWrap" style="display:none;">
+        <div class="grid-stats" id="kpisTop"></div>
+        <div id="vistaIngenieros"></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="overlay" id="overlayProyecto">
+  <div class="modal modal-grande">
+    <div class="modal-header">
+      <div>
+        <h3 id="proyModalNombre"></h3>
+        <div class="desc" id="proyModalMeta"></div>
+      </div>
+      <button class="modal-close" onclick="cerrarModal('overlayProyecto')" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="kpis-proyecto" id="proyModalKpis" style="margin:16px 0 4px;"></div>
+    <div class="panel-modal">
+      <h4>Cobro a Clientes</h4>
+      <div style="overflow-x:auto;" id="proyModalTablaWrap"></div>
+    </div>
+    <div class="panel-modal">
+      <h4>Pago a proveedores</h4>
+      <div style="overflow-x:auto;" id="proyModalTablaProvWrap"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayReplanificar">
+  <div class="modal">
+    <h3>Replanificar hito</h3>
+    <div class="desc" id="replanDesc"></div>
+    <div class="campo">
+      <label>Nueva Fecha Facturación</label>
+      <input type="date" id="replanFactura" />
+    </div>
+    <div class="campo">
+      <label>Nueva Fecha Cobro</label>
+      <input type="date" id="replanCobro" />
+    </div>
+    <div class="campo">
+      <label>Motivo del cambio (obligatorio)</label>
+      <textarea id="replanMotivo" placeholder="Ej: cliente retrasó infraestructura de red, se repactó con el PM de Telefónica..."></textarea>
+      <div class="error-campo" id="errorMotivo">El motivo es obligatorio para replanificar.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayReplanificar')">Cancelar</button>
+      <button class="btn btn-primario" onclick="guardarReplanificacion()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayHistorial">
+  <div class="modal">
+    <h3>Historial de replanificaciones</h3>
+    <div class="desc" id="histDesc"></div>
+    <div id="histBody" style="font-size:12.5px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayHistorial')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayGenerarDoc">
+  <div class="modal">
+    <h3 id="genDocTitulo">Generar documento</h3>
+    <div class="desc" id="genDocMeta"></div>
+    <div class="campo">
+      <label>Filial emisora</label>
+      <select id="genDocFilial"></select>
+    </div>
+    <div class="campo">
+      <label>Número (editable — confirmá con Administración si es el primero que generás)</label>
+      <input type="text" id="genDocNumero" />
+    </div>
+    <div class="campo">
+      <label>Fecha de emisión</label>
+      <input type="date" id="genDocFecha" />
+    </div>
+    <div class="campo">
+      <label>Concepto</label>
+      <input type="text" id="genDocConcepto" />
+    </div>
+    <div class="campo">
+      <label>Monto</label>
+      <input type="number" id="genDocMonto" step="0.01" />
+    </div>
+    <div class="campo">
+      <label>Impuesto (%) — dejar en 0 si no corresponde discriminar</label>
+      <input type="number" id="genDocImpuestoPct" step="0.01" value="0" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayGenerarDoc')">Cancelar</button>
+      <button class="btn btn-primario" onclick="confirmarGenerarDocumento()">Generar y descargar PDF</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayProveedor">
+  <div class="modal modal-grande">
+    <div class="modal-header">
+      <div>
+        <h3 id="provModalNombre"></h3>
+        <div class="desc" id="provModalMeta"></div>
+      </div>
+      <button class="modal-close" onclick="cerrarModal('overlayProveedor')" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="grid-stats" id="provModalKpis" style="margin:16px 0 4px;grid-template-columns:repeat(3,1fr);"></div>
+    <div class="panel-modal">
+      <h4>Hitos de pago (todos los proyectos)</h4>
+      <div style="overflow-x:auto;" id="provModalTablaWrap"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayReplanificarProv">
+  <div class="modal">
+    <h3>Replanificar pago a proveedor</h3>
+    <div class="desc" id="replanProvDesc"></div>
+    <div class="campo">
+      <label>Nueva Fecha de envío de PO</label>
+      <input type="date" id="replanProvFactura" />
+    </div>
+    <div class="campo">
+      <label>Nueva Fecha de pago</label>
+      <input type="date" id="replanProvPago" />
+    </div>
+    <div class="campo">
+      <label>Motivo del cambio (obligatorio)</label>
+      <textarea id="replanProvMotivo" placeholder="Ej: el proveedor avisó un cambio en su condición de pago habitual..."></textarea>
+      <div class="error-campo" id="errorMotivoProv">El motivo es obligatorio para replanificar.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayReplanificarProv')">Cancelar</button>
+      <button class="btn btn-primario" onclick="guardarReplanificacionProv()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayHistorialProv">
+  <div class="modal">
+    <h3>Historial de replanificaciones</h3>
+    <div class="desc" id="histProvDesc"></div>
+    <div id="histProvBody" style="font-size:12.5px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayHistorialProv')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayIngeniero">
+  <div class="modal modal-grande">
+    <div class="modal-header">
+      <div>
+        <h3 id="ingModalNombre"></h3>
+        <div class="desc" id="ingModalMeta"></div>
+      </div>
+      <button class="modal-close" onclick="cerrarModal('overlayIngeniero')" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="grid-stats" id="ingModalKpis" style="margin:16px 0 4px;grid-template-columns:repeat(3,1fr);"></div>
+
+    <div class="panel-modal">
+      <h4>Proyectos asignados (comprometido)</h4>
+      <div id="ingModalProyectos"></div>
+    </div>
+    <div class="panel-modal">
+      <h4>Reservas en oportunidades de pipeline</h4>
+      <div id="ingModalPipeline"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+</div><!-- /#appRoot -->
+
+<script>
+// =====================================================================
+// Utilidades compartidas
+// =====================================================================
+function escapeHtml(s){
+  if(s==null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function parseISO(s){ if(!s) return null; const [y,m,dd]=s.split("-").map(Number); return new Date(Date.UTC(y,m-1,dd)); }
+function fmt(s){ if(!s) return "—"; const dt=parseISO(s); return dt.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric",timeZone:"UTC"}); }
+function diffDias(a,b){ if(!a||!b) return null; return Math.round((parseISO(b)-parseISO(a))/86400000); }
+function addDiasISO(fechaISO, dias){
+  if(!fechaISO || dias==null || dias==="") return null;
+  const dt = parseISO(fechaISO);
+  dt.setUTCDate(dt.getUTCDate() + Number(dias));
+  return dt.toISOString().slice(0,10);
+}
+const HOY_ISO = "2026-08-26"; // fecha de referencia del prototipo
+function abrirModal(id){ document.getElementById(id).classList.add("show"); }
+function cerrarModal(id){ document.getElementById(id).classList.remove("show"); }
+function mostrarToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2500);
+}
+
+// =====================================================================
+// Integración con Microsoft Entra ID / Microsoft Graph (sitio VENTAS)
+// =====================================================================
+const MSAL_CONFIG = {
+  clientId: "e40b99f1-2a44-4e8c-bfd7-5705511b62b5",
+  tenantId: "c1c1bce2-497e-4876-a56a-fe4c1e6d5e46",
+  redirectUri: window.location.origin + window.location.pathname,
+};
+const SITE_PATH = "sunsettechnology567.sharepoint.com:/sites/VENTAS";
+const LOGIN_SCOPES = ["User.Read", "Sites.Selected"];
+// Permiso opcional para leer a qué grupo de Entra ID pertenece el usuario (ERP-PM / ERP-Administracion / ERP-Gerencia)
+// y así ocultar módulos según el rol. Si el permiso todavía no fue agregado en el App Registration,
+// esto falla en silencio y la app muestra todos los módulos (el control de acceso real ya lo hace
+// "Asignación requerida" en el Enterprise Application, esto es solo comodidad de UI).
+const ROLE_SCOPES = ["GroupMember.Read.All"];
+const GRUPOS_ROL = { "ERP-PM": "pm", "ERP-Administracion": "administracion", "ERP-Gerencia": "gerencia" };
+
+const msalInstance = new msal.PublicClientApplication({
+  auth: {
+    clientId: MSAL_CONFIG.clientId,
+    authority: `https://login.microsoftonline.com/${MSAL_CONFIG.tenantId}`,
+    redirectUri: MSAL_CONFIG.redirectUri,
+  },
+  cache: { cacheLocation: "sessionStorage", storeAuthStateInCookie: false },
+});
+
+let cuentaActual = null;
+let rolesUsuario = []; // ["pm","administracion","gerencia"] según grupos de Entra ID (si se pudo leer)
+let siteIdCache = null;
+const listIdCache = {};
+
+async function obtenerToken(scopes){
+  const request = { scopes, account: cuentaActual };
+  try {
+    const res = await msalInstance.acquireTokenSilent(request);
+    return res.accessToken;
+  } catch(e){
+    const res = await msalInstance.acquireTokenPopup(request);
+    return res.accessToken;
+  }
+}
+
+async function graphFetch(url, opciones = {}){
+  const token = await obtenerToken(opciones.scopes || LOGIN_SCOPES);
+  const res = await fetch(url, {
+    ...opciones,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(opciones.headers || {}),
+    },
+  });
+  if(!res.ok){
+    const texto = await res.text().catch(()=> "");
+    throw new Error(`Graph ${opciones.method||"GET"} ${url} → ${res.status}: ${texto.slice(0,300)}`);
+  }
+  if(res.status === 204) return null;
+  return res.json();
+}
+
+async function resolverSiteId(){
+  if(siteIdCache) return siteIdCache;
+  const data = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${SITE_PATH}`);
+  siteIdCache = data.id;
+  return siteIdCache;
+}
+
+async function resolverListaId(nombre){
+  if(listIdCache[nombre]) return listIdCache[nombre];
+  const siteId = await resolverSiteId();
+  const data = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists?$filter=${encodeURIComponent(`displayName eq '${nombre}'`)}&$select=id,displayName`);
+  const lista = data.value && data.value[0];
+  if(!lista) throw new Error(`No se encontró la lista '${nombre}' en el sitio VENTAS.`);
+  listIdCache[nombre] = lista.id;
+  return lista.id;
+}
+
+async function obtenerTodosLosItems(nombreLista){
+  const siteId = await resolverSiteId();
+  const listId = await resolverListaId(nombreLista);
+  let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=200`;
+  const items = [];
+  while(url){
+    const data = await graphFetch(url);
+    items.push(...data.value);
+    url = data["@odata.nextLink"] || null;
+  }
+  return items;
+}
+
+async function crearItem(nombreLista, campos){
+  const siteId = await resolverSiteId();
+  const listId = await resolverListaId(nombreLista);
+  return graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
+    method: "POST",
+    body: JSON.stringify({ fields: campos }),
+  });
+}
+
+async function actualizarItem(nombreLista, itemId, campos){
+  const siteId = await resolverSiteId();
+  const listId = await resolverListaId(nombreLista);
+  await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
+    method: "PATCH",
+    body: JSON.stringify(campos),
+  });
+}
+
+// ---- Carga y transformación de datos: SharePoint → estructuras que usa el render ----
+
+async function cargarDatosERP(){
+  const [
+    itemsProyectos, itemsHitosFact, itemsHitosProv, itemsProveedores,
+    itemsIngenieros, itemsHistorial, itemsAsignaciones, itemsPipeline, itemsOportunidades,
+  ] = await Promise.all([
+    obtenerTodosLosItems("Proyectos_ERP"),
+    obtenerTodosLosItems("Hitos_Facturacion"),
+    obtenerTodosLosItems("Hitos_Pago_Proveedores"),
+    obtenerTodosLosItems("Proveedores"),
+    obtenerTodosLosItems("Ingenieros"),
+    obtenerTodosLosItems("Historial_Replanificacion"),
+    obtenerTodosLosItems("Asignaciones_Proyecto"),
+    obtenerTodosLosItems("Reservas_Pipeline"),
+    obtenerTodosLosItems("Oportunidades_Preventas"),
+  ]);
+
+  const camposDe = it => it.fields || {};
+  const soloFecha = v => (v ? String(v).slice(0,10) : null);
+
+  // --- Proveedores ---
+  proveedores.length = 0;
+  itemsProveedores.forEach(it=>{
+    const c = camposDe(it);
+    proveedores.push({
+      id: Number(it.id),
+      nombre: c.Title || "",
+      categoria: c["Categor_x00ed_a_x0020__x002f__x0"] || "",
+      contacto: c.Contacto_x0020_principal || "",
+      email: c.Email_x0020_contacto || "",
+      telefono: c["Tel_x00e9_fono_x0020_contacto"] || "",
+      condicionPagoDiasHabitual: c["Condici_x00f3_n_x0020_de_x0020_p"] ?? null,
+      estado: c.Estado || "Activo",
+      notas: c.Notas || "",
+    });
+  });
+  const proveedorPorSpId = new Map(proveedores.map(p=>[p.id, p]));
+
+  // --- Proyectos ---
+  proyectos.length = 0;
+  const proyectoPorSpId = new Map();
+  itemsProyectos.forEach(it=>{
+    const c = camposDe(it);
+    const p = {
+      id: c.ID_x0020_Proyecto || `P-${it.id}`,
+      _spId: Number(it.id),
+      nombre: c.Title || "",
+      cliente: c.Cliente || "",
+      pm: (c.PM_x0020_asignado && c.PM_x0020_asignado.LookupValue) || c.PM_x0020_asignado || "",
+      fechaInicioEstimada: soloFecha(c.Fecha_x0020_inicio_x0020_estimad),
+      fechaInicioReal: soloFecha(c["Fecha_x0020_inicio_x0020_real_x0"]),
+      filial: c.Filial || "",
+      clienteRazonSocial: c.ClienteRazonSocial || c.Cliente || "",
+      clienteIdFiscal: c.ClienteIdFiscal || "",
+      clienteDireccionFiscal: c.ClienteDireccionFiscal || "",
+      clienteEmailFacturacion: c.ClienteEmailFacturacion || "",
+      hitos: [],
+    };
+    proyectos.push(p);
+    proyectoPorSpId.set(p._spId, p);
+  });
+
+  // --- Historial de replanificaciones, agrupado por hito (cliente) y por hito de proveedor ---
+  const historialPorHito = new Map();
+  const historialPorHitoProv = new Map();
+  itemsHistorial.forEach(it=>{
+    const c = camposDe(it);
+    const ev = {
+      _spId: Number(it.id),
+      campo: c.Campo_x0020_modificado || "",
+      de: soloFecha(c.Fecha_x0020_anterior),
+      a: soloFecha(c.Fecha_x0020_nueva),
+      motivo: c.Motivo || "",
+      fecha: soloFecha(it.lastModifiedDateTime) || soloFecha(c.Created),
+    };
+    const hitoLookupId = c.HitoLookupId;
+    const hitoProvLookupId = c["Hito_x0020_ProveedorLookupId"];
+    if(hitoLookupId){
+      if(!historialPorHito.has(hitoLookupId)) historialPorHito.set(hitoLookupId, []);
+      historialPorHito.get(hitoLookupId).push(ev);
+    }
+    if(hitoProvLookupId){
+      if(!historialPorHitoProv.has(hitoProvLookupId)) historialPorHitoProv.set(hitoProvLookupId, []);
+      historialPorHitoProv.get(hitoProvLookupId).push(ev);
+    }
+  });
+
+  // --- Hitos de facturación a cliente (colgados del proyecto correspondiente) ---
+  itemsHitosFact.forEach(it=>{
+    const c = camposDe(it);
+    const p = proyectoPorSpId.get(c.ProyectoLookupId);
+    if(!p) return;
+    const spId = Number(it.id);
+    p.hitos.push({
+      id: spId,
+      _spId: spId,
+      desc: c["Nro_x002e__x0020_hito_x0020__x00"] || "",
+      tipo: c.Tipo_x0020_de_x0020_hito || "",
+      pct: c["_x0025__x0020_del_x0020_proyecto"] ?? 0,
+      montoUSD: c.Monto_x0020_USD ?? 0,
+      hitoCumplido: !!c.Hito_x0020_cumplido,
+      comFact: soloFecha(c.Fecha_x0020_Plan_x0020_Comercial),
+      comCobro: soloFecha(c.Fecha_x0020_Plan_x0020_Comercial0),
+      fact: soloFecha(c.Fecha_x0020_Plan_x0020_Vigente_x),
+      cobro: soloFecha(c.Fecha_x0020_Plan_x0020_Vigente_x0),
+      facturaEnviada: !!c.Factura_x0020_enviada,
+      facturaNumero: c["N_x00b0__x0020_de_x0020_factura"] || "",
+      facturaCobrada: !!c.Factura_x0020_cobrada,
+      notasEstado: c.Notas_x0020_del_x0020_hito || "",
+      historial: historialPorHito.get(spId) || [],
+    });
+  });
+
+  // --- Ingenieros ---
+  ingenieros.length = 0;
+  const ingenieroPorSpId = new Map();
+  const ingenieroPorNombre = new Map();
+  itemsIngenieros.forEach(it=>{
+    const c = camposDe(it);
+    const ing = {
+      id: Number(it.id),
+      _spId: Number(it.id),
+      nombre: c.Title || "",
+      rol: c["Rol_x0020__x002f__x0020_Especial"] || "",
+      sucursal: c["Sucursal_x0020__x002f__x0020_Pa_"] || "",
+      estado: c.Estado || "Activo",
+      asignaciones: [],
+      pipeline: [],
+    };
+    ingenieros.push(ing);
+    ingenieroPorSpId.set(ing.id, ing);
+    ingenieroPorNombre.set(ing.nombre, ing);
+  });
+
+  // --- Asignaciones a proyectos (comprometido) ---
+  itemsAsignaciones.forEach(it=>{
+    const c = camposDe(it);
+    const ing = ingenieroPorSpId.get(c.IngenieroLookupId);
+    if(!ing) return;
+    const proy = proyectoPorSpId.get(c.ProyectoLookupId);
+    ing.asignaciones.push({
+      proyecto: proy ? proy.nombre : (c.Proyecto && c.Proyecto.LookupValue) || "",
+      rolProyecto: c["Rol_x0020_en_x0020_el_x0020_proy"] || "",
+      pct: c["_x0025__x0020_de_x0020_dedicaci_"] ?? 0,
+      inicio: soloFecha(c.Fecha_x0020_inicio),
+      fin: soloFecha(c.Fecha_x0020_fin),
+      estado: c.Estado || "Activo",
+    });
+  });
+
+  // --- Reservas de pipeline (oportunidades sin ganar) ---
+  const oportunidadPorSpId = new Map();
+  itemsOportunidades.forEach(it=>{
+    const c = camposDe(it);
+    oportunidadPorSpId.set(Number(it.id), { nombre: c.Title || "", cliente: c.Cliente || "" });
+  });
+  itemsPipeline.forEach(it=>{
+    const c = camposDe(it);
+    const nombreIng = c["Ingeniero_x0020__x0028_texto_x00"] || "";
+    const ing = ingenieroPorNombre.get(nombreIng);
+    if(!ing) return;
+    const op = oportunidadPorSpId.get(c.OportunidadLookupId) || {};
+    ing.pipeline.push({
+      oportunidad: op.nombre || (c.Oportunidad && c.Oportunidad.LookupValue) || "",
+      cliente: op.cliente || "",
+      horas: c.Horas ?? 0,
+      meses: c["Cantidad_x0020_de_x0020_meses"] ?? 0,
+      actualizado: soloFecha(c["_x00da_ltima_x0020_actualizaci_x"]),
+    });
+  });
+
+  // --- Hitos de pago a proveedores (órdenes de compra) ---
+  ordenesCompra.length = 0;
+  itemsHitosProv.forEach(it=>{
+    const c = camposDe(it);
+    const spId = Number(it.id);
+    const proy = proyectoPorSpId.get(c.ProyectoLookupId);
+    const prov = proveedorPorSpId.get(c["Proveedor_x0020__x0028_normalizaLookupId"]);
+    ordenesCompra.push({
+      id: spId,
+      _spId: spId,
+      proyecto: proy ? proy.nombre : "",
+      proyectoId: proy ? proy.id : "",
+      proveedorId: prov ? prov.id : null,
+      proveedor: c.Proveedor || (prov ? prov.nombre : ""),
+      item: c["Item_x0020__x002f__x0020_Servici"] || "",
+      pct: c["_x0025__x0020_del_x0020_hito"] ?? 0,
+      comFact: soloFecha(c.Fecha_x0020_Plan_x0020_Comercial),
+      comPago: soloFecha(c.Fecha_x0020_Plan_x0020_Comercial0),
+      envioPO: soloFecha(c["Fecha_x0020_de_x0020_env_x00ed_o"]),
+      pago: soloFecha(c.Fecha_x0020_de_x0020_pago),
+      poEnviada: !!c.PO_x0020_enviada,
+      poNumero: c.NumeroPO || "",
+      facturaProveedor: c["Factura_x0020_del_x0020_proveedo"] || "",
+      facturaPagada: !!c.Factura_x0020_pagada,
+      fechaPagoReal: soloFecha(c["Fecha_x0020_de_x0020_pago_x0020_"]),
+      historial: historialPorHitoProv.get(spId) || [],
+    });
+  });
+}
+
+// ---- Persistencia (escritura) desde las acciones del usuario ----
+
+function guardarCampoHitoFact(h, campos){
+  actualizarItem("Hitos_Facturacion", h._spId, campos).catch(e=>{
+    console.error(e);
+    mostrarToast("⚠ No se pudo guardar en SharePoint — reintentá o avisá a Preventas");
+  });
+}
+function guardarCampoOrdenProv(o, campos){
+  actualizarItem("Hitos_Pago_Proveedores", o._spId, campos).catch(e=>{
+    console.error(e);
+    mostrarToast("⚠ No se pudo guardar en SharePoint — reintentá o avisá a Preventas");
+  });
+}
+function crearHistorialCliente(hitoSpId, campo, de, a, motivo){
+  return crearItem("Historial_Replanificacion", {
+    Title: `${campo} — ${new Date().toISOString().slice(0,10)}`,
+    Lado: "Cliente",
+    HitoLookupId: hitoSpId,
+    Campo_x0020_modificado: campo,
+    Fecha_x0020_anterior: de || null,
+    Fecha_x0020_nueva: a || null,
+    Motivo: motivo,
+  }).catch(e=>{
+    console.error(e);
+    mostrarToast("⚠ No se pudo guardar el historial en SharePoint");
+  });
+}
+function crearHistorialProveedor(hitoProvSpId, campo, de, a, motivo){
+  return crearItem("Historial_Replanificacion", {
+    Title: `${campo} — ${new Date().toISOString().slice(0,10)}`,
+    Lado: "Proveedor",
+    Hito_x0020_ProveedorLookupId: hitoProvSpId,
+    Campo_x0020_modificado: campo,
+    Fecha_x0020_anterior: de || null,
+    Fecha_x0020_nueva: a || null,
+    Motivo: motivo,
+  }).catch(e=>{
+    console.error(e);
+    mostrarToast("⚠ No se pudo guardar el historial en SharePoint");
+  });
+}
+
+// ---- Roles (grupos de Entra ID) — solo afecta qué módulos se muestran ----
+
+async function cargarRolesUsuario(){
+  try {
+    const data = await graphFetch("https://graph.microsoft.com/v1.0/me/memberOf?$select=displayName", { scopes: ROLE_SCOPES });
+    rolesUsuario = (data.value || [])
+      .map(g => GRUPOS_ROL[g.displayName])
+      .filter(Boolean);
+  } catch(e){
+    console.warn("No se pudo leer el grupo de Entra ID del usuario (falta el permiso GroupMember.Read.All o no fue consentido). Se muestran todos los módulos.", e);
+    rolesUsuario = null; // null = desconocido → no se oculta nada
+  }
+  aplicarGatingDeRoles();
+}
+
+function aplicarGatingDeRoles(){
+  document.querySelectorAll(".module-tab[data-roles]").forEach(tab=>{
+    if(rolesUsuario === null) { tab.style.display = ""; return; }
+    const permitidos = tab.dataset.roles.split(",");
+    const visible = permitidos.some(r => rolesUsuario.includes(r));
+    tab.style.display = visible ? "" : "none";
+  });
+}
+
+// ---- Login / logout ----
+
+async function iniciarApp(){
+  document.getElementById("btnLogin").addEventListener("click", ()=> login().catch(mostrarErrorLogin));
+  document.getElementById("btnLogout").addEventListener("click", ()=> {
+    msalInstance.logoutRedirect({ account: cuentaActual });
+  });
+
+  await msalInstance.initialize();
+  const respuesta = await msalInstance.handleRedirectPromise().catch(mostrarErrorLogin);
+  if(respuesta && respuesta.account){
+    cuentaActual = respuesta.account;
+  } else {
+    const cuentas = msalInstance.getAllAccounts();
+    if(cuentas.length) cuentaActual = cuentas[0];
+  }
+  if(cuentaActual){
+    await despuesDeLogin();
+  }
+}
+
+async function login(){
+  document.getElementById("btnLogin").disabled = true;
+  document.getElementById("loginMsg").textContent = "Conectando con Microsoft…";
+  const res = await msalInstance.loginPopup({ scopes: LOGIN_SCOPES });
+  cuentaActual = res.account;
+  await despuesDeLogin();
+}
+
+function mostrarErrorLogin(e){
+  console.error(e);
+  const err = document.getElementById("loginErr");
+  err.textContent = "No se pudo iniciar sesión: " + (e && e.message ? e.message : e);
+  err.style.display = "block";
+  document.getElementById("btnLogin").disabled = false;
+}
+
+async function despuesDeLogin(){
+  try{
+    document.getElementById("loginMsg").textContent = `Hola, ${cuentaActual.name || cuentaActual.username} — cargando datos de SharePoint…`;
+    document.getElementById("userBadgeNombre").textContent = cuentaActual.name || cuentaActual.username;
+    await cargarDatosERP();
+    cargarRolesUsuario(); // no bloqueante — se aplica cuando termine
+    document.getElementById("loginGate").style.display = "none";
+    document.getElementById("appRoot").style.display = "block";
+    inicializarVistaApp();
+  } catch(e){
+    mostrarErrorLogin(e);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{ iniciarApp().catch(mostrarErrorLogin); });
+
+
+// =====================================================================
+// MÓDULO FINANCIERO / FACTURACIÓN
+// =====================================================================
+// TODO integración real: reemplazar este array por lectura de las listas
+// Proyectos_ERP + Hitos_Facturacion vía Microsoft Graph (ver especificación técnica).
+
+const TIPOS_HITO = ["Anticipo","Servicios","Hardware","Software","Soporte","Capacitación"];
+
+// ---- Filiales de Sunset: datos fiscales/bancarios fijos, para generar Facturas (proforma) y PO ----
+// OJO: datos cargados desde lo que pasó Patricio (25/09/26). Pendiente de confirmar: tipo de
+// comprobante en España/EEUU, datos bancarios de EEUU, y el email de contacto real de cada filial.
+const FILIALES = {
+  "Argentina": {
+    razonSocial: "Sunset Systems S.R.L.",
+    idFiscalLabel: "CUIT",
+    idFiscal: "30-71794037-3",
+    direccion: "Miralla 1430 - Oficina 2 - CABA - Argentina - CP1440",
+    tipoComprobante: "Factura A (proforma)",
+    moneda: "ARS",
+    monedaSimbolo: "$",
+    banco: { detalle: "Cuenta Corriente 0001006-3 163-7 · CBU 0070163720000001006377" },
+    email: "",
+    telefono: "",
+  },
+  "España": {
+    razonSocial: "Sunset Systems S.L.",
+    idFiscalLabel: "NIF",
+    idFiscal: "B75542050",
+    direccion: "Calle Esmeralda, Urb Los Flamencos Of 72, Mijas, Málaga, España CP: 29649",
+    tipoComprobante: "Factura (proforma)",
+    moneda: "EUR",
+    monedaSimbolo: "€",
+    banco: { detalle: "Banco de Sabadell, S.A. · IBAN ES30 0081 0552 9600 0266 1374 · SWIFT BSABESBBXXX" },
+    email: "",
+    telefono: "",
+  },
+  "EEUU": {
+    razonSocial: "Sunset Systems North America LLC",
+    idFiscalLabel: "EIN",
+    idFiscal: "41-2289135",
+    direccion: "95 Merrick Way 3rd Floor, Coral Gables, FL 33134, United States",
+    tipoComprobante: "Proforma Invoice",
+    moneda: "USD",
+    monedaSimbolo: "US$",
+    banco: null, // pendiente — Patricio lo va a pasar
+    email: "",
+    telefono: "",
+  },
+};
+
+let proyectos = []; // Proyectos_ERP + Hitos_Facturacion — cargado desde SharePoint, ver cargarDatosERP()
+
+function facturaSinAviso(h){
+  return !h.facturaEnviada && parseISO(h.fact) < parseISO(HOY_ISO);
+}
+
+// El PM marcó el hito como cumplido (producto/servicio entregado / aprobado por el cliente) pero Administración todavía no facturó.
+function hitoListoParaFacturar(h){
+  return !!h.hitoCumplido && !h.facturaEnviada;
+}
+
+// La factura se envió pero no se cobró, y ya pasó la fecha de cobro esperada.
+function facturaSinCobrar(h){
+  return !!h.facturaEnviada && !h.facturaCobrada && !!h.cobro && parseISO(h.cobro) < parseISO(HOY_ISO);
+}
+
+// Ya llegó la fecha de facturación y el PM todavía no marcó el hito como cumplido — Administración debería
+// contactar al PM para preguntar por qué no se cumplió y que actualice la fecha desde el Módulo Proyecto.
+function hitoSinCumplirVencido(h){
+  return !h.hitoCumplido && !!h.fact && parseISO(h.fact) < parseISO(HOY_ISO);
+}
+
+let filtrosFin = { texto:"", cliente:"", pm:"", filial:"", alerta:false };
+let vistaActual = "proyectos";
+let modalCtx = null; // { proyectoId, hitoId }
+let proyectoModalId = null;
+
+function poblarSelectsFin(){
+  const clientes = [...new Set(proyectos.map(p=>p.cliente))].sort();
+  const pms = [...new Set(proyectos.map(p=>p.pm))].sort();
+  const filiales = [...new Set(proyectos.map(p=>p.filial).filter(Boolean))].sort();
+  const selC = document.getElementById("fFinCliente");
+  const selP = document.getElementById("fFinPM");
+  const selF = document.getElementById("fFinFilial");
+  selC.innerHTML = '<option value="">Todos</option>' + clientes.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  selP.innerHTML = '<option value="">Todos</option>' + pms.map(pm=>`<option value="${escapeHtml(pm)}">${escapeHtml(pm)}</option>`).join("");
+  selF.innerHTML = '<option value="">Todas</option>' + filiales.map(f=>`<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+}
+
+function pasaFiltrosProyecto(p){
+  if(filtrosFin.cliente && p.cliente !== filtrosFin.cliente) return false;
+  if(filtrosFin.pm && p.pm !== filtrosFin.pm) return false;
+  if(filtrosFin.filial && p.filial !== filtrosFin.filial) return false;
+  if(filtrosFin.texto){
+    const t = filtrosFin.texto.toLowerCase();
+    if(!p.nombre.toLowerCase().includes(t) && !p.cliente.toLowerCase().includes(t)) return false;
+  }
+  if(filtrosFin.alerta){
+    if(!p.hitos.some(h => facturaSinAviso(h))) return false;
+  }
+  return true;
+}
+
+function renderProyectos(){
+  const cont = document.getElementById("vistaProyectos");
+  const lista = proyectos.filter(pasaFiltrosProyecto);
+  actualizarBadgeVencidos();
+
+  if(lista.length === 0){
+    cont.innerHTML = `<div class="empty-state">No hay proyectos que coincidan con los filtros.</div>`;
+    return;
+  }
+
+  cont.innerHTML = lista.map(p => renderProyecto(p)).join("");
+}
+
+function renderKpisProyecto(p){
+  const atrasoArranque = diffDias(p.fechaInicioEstimada, p.fechaInicioReal);
+  const hitosCumplidos = p.hitos.filter(h=>h.hitoCumplido).length;
+  const listosParaFacturar = p.hitos.filter(h=>hitoListoParaFacturar(h)).length;
+  const alertas = p.hitos.filter(h=>facturaSinAviso(h)).length;
+  const sinCobrar = p.hitos.filter(h=>facturaSinCobrar(h)).length;
+  const ordenesProy = ordenesCompra.filter(o=>o.proyecto===p.nombre);
+  const provVencidos = ordenesProy.filter(o=>estadoOrden(o)==="Vencido").length;
+  const provProximos = ordenesProy.filter(o=>estadoOrden(o)==="Proximo").length;
+  const pagosPorVencer = provVencidos + provProximos;
+  const colorPagosProv = provVencidos>0 ? 'var(--danger)' : provProximos>0 ? 'var(--warn)' : 'var(--ok)';
+  return `
+    <div class="kpi-mini">
+      <div class="valor" style="color:${atrasoArranque==null?'var(--gris)':atrasoArranque>30?'var(--danger)':atrasoArranque>0?'var(--warn)':'var(--ok)'}">${atrasoArranque==null?"—":atrasoArranque+" d"}</div>
+      <div class="label">Atraso arranque</div>
+    </div>
+    <div class="kpi-mini">
+      <div class="valor">${hitosCumplidos} / ${p.hitos.length}</div>
+      <div class="label">Hitos cumplidos</div>
+    </div>
+    <div class="kpi-mini">
+      <div class="valor" style="color:${listosParaFacturar>0?'var(--warn)':'var(--ok)'}">${listosParaFacturar}</div>
+      <div class="label">Cumplidos, sin facturar</div>
+    </div>
+    <div class="kpi-mini">
+      <div class="valor" style="color:${alertas>0?'var(--danger)':'var(--ok)'}">${alertas}</div>
+      <div class="label">Sin confirmar envío</div>
+    </div>
+    <div class="kpi-mini">
+      <div class="valor" style="color:${sinCobrar>0?'var(--danger)':'var(--ok)'}">${sinCobrar}</div>
+      <div class="label">Facturadas sin cobrar (vencidas)</div>
+    </div>
+    <div class="kpi-mini">
+      <div class="valor" style="color:${colorPagosProv}">${pagosPorVencer}</div>
+      <div class="label">Pagos prov. por vencer/vencidos</div>
+    </div>`;
+}
+
+function renderTablaHitos(p){
+  return `
+  <table class="hitos">
+    <thead>
+      <tr>
+        <th class="col-desc" rowspan="2">Hito</th>
+        <th rowspan="2">Tipo</th>
+        <th rowspan="2">%</th>
+        <th rowspan="2">Hito cumplido</th>
+        <th colspan="2">Estimado CANS</th>
+        <th rowspan="2">Fecha Facturación</th>
+        <th rowspan="2">Fecha Cobro</th>
+        <th rowspan="2">Factura enviada</th>
+        <th rowspan="2">Acciones</th>
+      </tr>
+      <tr>
+        <th>Facturación</th>
+        <th>Cobro</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${p.hitos.map(h=>renderHitoRow(p,h)).join("")}
+    </tbody>
+  </table>`;
+}
+
+function renderProyecto(p){
+  return `
+  <div class="proyecto" id="proy-${p.id}">
+    <div class="proyecto-head" onclick="abrirProyecto('${p.id}')">
+      <div class="proyecto-titulo">
+        <div class="nombre">${escapeHtml(p.nombre)}</div>
+        <div class="meta">${escapeHtml(p.cliente)} · PM: ${escapeHtml(p.pm)} · ${p.hitos.length} hito(s)${p.filial?` · Filial: ${escapeHtml(p.filial)}`:''}</div>
+      </div>
+      <div class="kpis-proyecto">
+        ${renderKpisProyecto(p)}
+      </div>
+      <div class="ver-detalle">Ver hitos ›</div>
+    </div>
+  </div>`;
+}
+
+function renderHitoRow(p,h){
+  const alarma = facturaSinAviso(h);
+  const ultimoMotivo = h.historial.length ? h.historial[h.historial.length-1].motivo : null;
+
+  return `
+  <tr>
+    <td class="col-desc"><strong>${escapeHtml(h.desc)}</strong></td>
+    <td>
+      <select onchange="cambiarTipoHito('${p.id}',${h.id},this.value)" style="font-size:12px;padding:4px 6px;">
+        ${TIPOS_HITO.map(t=>`<option value="${t}" ${h.tipo===t?"selected":""}>${t}</option>`).join("")}
+      </select>
+    </td>
+    <td>${h.pct}%</td>
+    <td style="text-align:center;">
+      <label class="chk-row" style="justify-content:center;" title="Marcá esto cuando el hito esté entregado/aprobado por el cliente. Avisa a Administración para que facture.">
+        <input type="checkbox" ${h.hitoCumplido?"checked":""} onchange="event.stopPropagation();marcarHitoCumplido('${p.id}',${h.id},this.checked)" />
+      </label>
+    </td>
+    <td>${fmt(h.comFact)}</td>
+    <td>${fmt(h.comCobro)}</td>
+    <td>${fmt(h.fact)}
+        ${ultimoMotivo ? `<span class="motivo-chip" title="${escapeHtml(ultimoMotivo)}">💬 ${escapeHtml(ultimoMotivo.slice(0,40))}${ultimoMotivo.length>40?'…':''}</span>` : ""}
+    </td>
+    <td>${fmt(h.cobro)}</td>
+    <td>
+      ${alarma ? `<span class="estado Vencido" title="La fecha de facturación ya pasó y Financiero todavía no confirmó el envío.">⚠ Sin confirmar</span>` : (h.facturaEnviada ? `<span class="estado Pagado">✓ Enviada</span>` : `<span class="estado Pendiente">Pendiente</span>`)}
+      ${facturaSinCobrar(h) ? `<span class="estado Vencido" title="La factura se envió pero no se marcó cobrada, y ya pasó la fecha de cobro esperada.">⚠ Sin cobrar</span>` : ""}
+    </td>
+    <td>
+      <div class="acciones-hito">
+        <button class="btn-mini" onclick="event.stopPropagation();abrirReplanificar('${p.id}',${h.id})">Replanificar</button>
+        ${h.historial.length ? `<button class="btn-mini" onclick="event.stopPropagation();abrirHistorial('${p.id}',${h.id})">Historial (${h.historial.length})</button>` : ""}
+      </div>
+    </td>
+  </tr>
+  <tr class="fila-notas-hito">
+    <td colspan="10" style="padding:4px 10px 10px;">
+      <label style="font-size:11px;color:var(--gris);text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:3px;">Notas del hito</label>
+      <textarea class="notas-hito" placeholder="Estado de este hito en particular, riesgos, próximos pasos..." onchange="guardarNotaHito('${p.id}',${h.id},this.value)">${escapeHtml(h.notasEstado||"")}</textarea>
+    </td>
+  </tr>`;
+}
+
+function cambiarTipoHito(pid, hid, valor){
+  const {h} = hito(pid,hid);
+  h.tipo = valor;
+  guardarCampoHitoFact(h, { Tipo_x0020_de_x0020_hito: valor });
+  mostrarToast("Tipo de hito actualizado");
+}
+
+function guardarNotaHito(pid, hid, valor){
+  const {h} = hito(pid,hid);
+  h.notasEstado = valor;
+  guardarCampoHitoFact(h, { Notas_x0020_del_x0020_hito: valor });
+  mostrarToast("Nota del hito guardada");
+}
+
+function abrirProyecto(id){
+  proyectoModalId = id;
+  refrescarModalProyecto();
+  abrirModal("overlayProyecto");
+}
+
+function refrescarModalProyecto(){
+  if(!proyectoModalId) return;
+  const p = proyectos.find(x=>x.id===proyectoModalId);
+  document.getElementById("proyModalNombre").textContent = p.nombre;
+  document.getElementById("proyModalMeta").textContent = `${p.cliente} · PM: ${p.pm} · ${p.hitos.length} hito(s)${p.filial?` · Filial: ${p.filial}`:''}`;
+  document.getElementById("proyModalKpis").innerHTML = renderKpisProyecto(p);
+  document.getElementById("proyModalTablaWrap").innerHTML = renderTablaHitos(p);
+  document.getElementById("proyModalTablaProvWrap").innerHTML = renderTablaOrdenes(ordenesCompra.filter(o=>o.proyecto===p.nombre));
+}
+
+function actualizarBadgeVencidos(){
+  const todosHitos = proyectos.flatMap(p=>p.hitos);
+
+  const totalAlertas = todosHitos.filter(h=>facturaSinAviso(h)).length;
+  const el = document.getElementById("badgeVencidos");
+  if(totalAlertas>0){
+    el.textContent = `⚠ ${totalAlertas} factura(s) sin confirmar envío`;
+    el.classList.add("show");
+  } else {
+    el.classList.remove("show");
+  }
+
+  const totalSinCumplir = todosHitos.filter(h=>hitoSinCumplirVencido(h)).length;
+  const elSinCumplir = document.getElementById("badgeHitoSinCumplir");
+  if(totalSinCumplir>0){
+    elSinCumplir.textContent = `⚠ ${totalSinCumplir} hito(s) vencido(s) sin cumplir`;
+    elSinCumplir.classList.add("show");
+  } else {
+    elSinCumplir.classList.remove("show");
+  }
+
+  const totalListosFacturar = todosHitos.filter(h=>hitoListoParaFacturar(h)).length;
+  const elCumplidos = document.getElementById("badgeHitosCumplidos");
+  if(totalListosFacturar>0){
+    elCumplidos.textContent = `⏰ ${totalListosFacturar} hito(s) cumplido(s), a facturar`;
+    elCumplidos.classList.add("show");
+  } else {
+    elCumplidos.classList.remove("show");
+  }
+
+  const totalSinCobrar = todosHitos.filter(h=>facturaSinCobrar(h)).length;
+  const elCobro = document.getElementById("badgeCobroVencido");
+  if(totalSinCobrar>0){
+    elCobro.textContent = `⚠ ${totalSinCobrar} factura(s) vencida(s) sin cobrar`;
+    elCobro.classList.add("show");
+  } else {
+    elCobro.classList.remove("show");
+  }
+}
+
+function hito(pid,hid){
+  const p = proyectos.find(x=>x.id===pid);
+  const h = p.hitos.find(x=>x.id===hid);
+  return {p,h};
+}
+
+function abrirReplanificar(pid,hid){
+  const {p,h} = hito(pid,hid);
+  modalCtx = {pid,hid};
+  document.getElementById("replanDesc").textContent = `${p.nombre} — ${h.desc}`;
+  document.getElementById("replanFactura").value = h.fact || "";
+  document.getElementById("replanCobro").value = h.cobro || "";
+  document.getElementById("replanMotivo").value = "";
+  document.getElementById("errorMotivo").classList.remove("show");
+  abrirModal("overlayReplanificar");
+}
+
+function guardarReplanificacion(){
+  const {pid,hid} = modalCtx;
+  const {h} = hito(pid,hid);
+  const motivo = document.getElementById("replanMotivo").value.trim();
+  if(!motivo){ document.getElementById("errorMotivo").classList.add("show"); return; }
+  const nuevaFact = document.getElementById("replanFactura").value;
+  const nuevaCobro = document.getElementById("replanCobro").value;
+  const hoy = new Date().toISOString().slice(0,10);
+  const camposAActualizar = {};
+  if(nuevaFact && nuevaFact !== h.fact){
+    h.historial.push({ campo:"Facturación", de:h.fact, a:nuevaFact, motivo, fecha:hoy });
+    crearHistorialCliente(h._spId, "Facturación", h.fact, nuevaFact, motivo);
+    camposAActualizar.Fecha_x0020_Plan_x0020_Vigente_x = nuevaFact;
+    h.fact = nuevaFact;
+  }
+  if(nuevaCobro && nuevaCobro !== h.cobro){
+    h.historial.push({ campo:"Cobro", de:h.cobro, a:nuevaCobro, motivo, fecha:hoy });
+    crearHistorialCliente(h._spId, "Cobro", h.cobro, nuevaCobro, motivo);
+    camposAActualizar.Fecha_x0020_Plan_x0020_Vigente_x0 = nuevaCobro;
+    h.cobro = nuevaCobro;
+  }
+  if(Object.keys(camposAActualizar).length) guardarCampoHitoFact(h, camposAActualizar);
+  cerrarModal("overlayReplanificar");
+  mostrarToast("Fecha de Facturación / Cobro actualizada");
+  renderProyectos();
+  refrescarModalProyecto();
+  refrescarVistasOrdenes();
+}
+
+function abrirHistorial(pid,hid){
+  const {p,h} = hito(pid,hid);
+  document.getElementById("histDesc").textContent = `${p.nombre} — ${h.desc}`;
+  document.getElementById("histBody").innerHTML = h.historial.slice().reverse().map(ev => `
+    <div style="border-bottom:1px solid #eef1f2;padding:8px 0;">
+      <div><strong>${fmt(ev.fecha)}</strong> — ${escapeHtml(ev.campo||"")}: ${escapeHtml(fmt(ev.de))} → <strong>${escapeHtml(fmt(ev.a))}</strong></div>
+      <div style="color:var(--gris);margin-top:2px;">${escapeHtml(ev.motivo)}</div>
+    </div>`).join("") || "<p>Sin cambios registrados.</p>";
+  abrirModal("overlayHistorial");
+}
+
+function renderEstadisticasFinanciero(){
+  const cont = document.getElementById("statsBody");
+  const todosHitos = proyectos.flatMap(p=>p.hitos.map(h=>({...h, proyecto:p})));
+
+  const arranques = proyectos.map(p=>diffDias(p.fechaInicioEstimada,p.fechaInicioReal)).filter(v=>v!=null);
+  const prom = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+  const promArranque = prom(arranques);
+
+  const totalUSD = todosHitos.reduce((s,h)=>s+h.montoUSD,0);
+  const facturadoUSD = todosHitos.filter(h=>h.facturaEnviada).reduce((s,h)=>s+h.montoUSD,0);
+  const alertasCount = todosHitos.filter(h=>facturaSinAviso(h)).length;
+  const pctEnviadas = todosHitos.length ? Math.round(100*todosHitos.filter(h=>h.facturaEnviada).length/todosHitos.length) : 0;
+
+  const porTipo = TIPOS_HITO.map(t=>{
+    const hs = todosHitos.filter(h=>h.tipo===t);
+    return { tipo:t, n:hs.length, monto: hs.reduce((s,h)=>s+h.montoUSD,0) };
+  }).filter(f=>f.n>0);
+
+  const motivos = proyectos.flatMap(p=>p.hitos.flatMap(h=>h.historial.map(ev=>ev.motivo)));
+
+  cont.innerHTML = `
+    <div class="grid-stats">
+      <div class="stat-tile"><div class="num">${promArranque==null?"—":promArranque+" d"}</div><div class="lbl">Atraso de arranque promedio</div><div class="sub">vs. fecha comercial estimada</div></div>
+      <div class="stat-tile"><div class="num">${pctEnviadas}%</div><div class="lbl">Hitos con factura enviada</div></div>
+      <div class="stat-tile"><div class="num">$${(facturadoUSD/1000).toFixed(0)}k <span style="font-size:14px;color:var(--gris);">/ $${(totalUSD/1000).toFixed(0)}k</span></div><div class="lbl">Facturado / Total en cartera</div></div>
+      <div class="stat-tile"><div class="num" style="color:${alertasCount>0?'#C0392B':'#1E8E3E'}">${alertasCount}</div><div class="lbl">Facturas sin confirmar envío</div></div>
+    </div>
+
+    <div class="panel">
+      <h3>Cartera por tipo de hito</h3>
+      <table class="simple">
+        <thead><tr><th>Tipo</th><th>Hitos</th><th>Monto (USD)</th></tr></thead>
+        <tbody>
+          ${porTipo.map(f=>`<tr>
+            <td>${escapeHtml(f.tipo)}</td>
+            <td>${f.n}</td>
+            <td>$${f.monto.toLocaleString("es-AR")}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Motivos de replanificación registrados</h3>
+      ${motivos.length ? `<table class="simple"><tbody>${motivos.map(m=>`<tr><td>${escapeHtml(m)}</td></tr>`).join("")}</tbody></table>` : "<p style='color:var(--gris);font-size:13px;'>Todavía no hay replanificaciones registradas.</p>"}
+    </div>
+  `;
+}
+
+// ---- Módulo Facturación (vista sobre las mismas listas Hitos_Facturacion / Hitos_Pago_Proveedores) ----
+let facturacionSubvista = "clientes";
+
+function cambiarFacturacionSubvista(v){
+  facturacionSubvista = v;
+  renderFacturacion();
+}
+
+let filtroFilialFacturacion = "";
+
+function renderFiltroFilialFacturacion(){
+  const filiales = [...new Set(proyectos.map(p=>p.filial).filter(Boolean))].sort();
+  let cont = document.getElementById("filtroFilialFactBar");
+  if(!cont){
+    cont = document.createElement("div");
+    cont.id = "filtroFilialFactBar";
+    cont.style.cssText = "margin:2px 0 14px;display:flex;align-items:center;gap:8px;";
+    document.getElementById("vistaFacturacion").before(cont);
+  }
+  cont.innerHTML = `
+    <label style="font-size:11px;text-transform:uppercase;letter-spacing:.02em;color:var(--gris);">Filial</label>
+    <select id="fFactFilial" style="width:auto;">
+      <option value="">Todas</option>
+      ${filiales.map(f=>`<option value="${escapeHtml(f)}" ${filtroFilialFacturacion===f?"selected":""}>${escapeHtml(f)}</option>`).join("")}
+    </select>
+  `;
+  document.getElementById("fFactFilial").onchange = e=>{ filtroFilialFacturacion = e.target.value; renderFacturacion(); };
+}
+
+function actualizarPanelFiltroCompras(){
+  const mostrar = facturacionSubvista === "proveedores";
+  const panel = document.getElementById("panelFiltrosCom");
+  const kpis = document.getElementById("kpisTopCom");
+  if(panel) panel.style.display = mostrar ? "block" : "none";
+  if(kpis) kpis.style.display = mostrar ? "" : "none";
+  if(mostrar) renderKpisCompras();
+}
+
+function renderFacturacion(){
+  document.getElementById("btnFactClientes").classList.toggle("active", facturacionSubvista==="clientes");
+  document.getElementById("btnFactProveedores").classList.toggle("active", facturacionSubvista==="proveedores");
+  renderFiltroFilialFacturacion();
+  actualizarPanelFiltroCompras();
+  if(facturacionSubvista === "proveedores") renderFacturacionProveedores();
+  else renderFacturacionClientes();
+}
+
+function renderFacturacionClientes(){
+  const cont = document.getElementById("vistaFacturacion");
+  const proyectosConHitos = proyectos.filter(p=>p.hitos.length && (!filtroFilialFacturacion || p.filial===filtroFilialFacturacion));
+  if(!proyectosConHitos.length){ cont.innerHTML = `<div class="empty-state">No hay hitos de facturación cargados.</div>`; return; }
+  cont.innerHTML = proyectosConHitos.map(p=>`
+    <div class="seccion-proyecto-fact">
+      <div class="seccion-proyecto-fact-head">
+        <span class="nombre">${escapeHtml(p.nombre)}</span>
+        <span class="meta">${escapeHtml(p.cliente)} · PM: ${escapeHtml(p.pm)}${p.filial?` · Filial: ${escapeHtml(p.filial)}`:` · <span style="color:#ffb454;">⚠ sin filial</span>`}</span>
+      </div>
+      <div class="seccion-proyecto-fact-body">
+        <table class="hitos">
+          <thead><tr>
+            <th class="col-desc">Hito</th>
+            <th>Tipo</th>
+            <th>%</th>
+            <th>Monto (USD)</th>
+            <th>Hito cumplido</th>
+            <th>Fecha Facturación</th>
+            <th>Factura enviada</th>
+            <th>N° de factura</th>
+            <th>Fecha Cobro</th>
+            <th>Factura cobrada</th>
+          </tr></thead>
+          <tbody>
+            ${p.hitos.map(h=>`
+            <tr class="${facturaSinAviso(h)||facturaSinCobrar(h)||hitoSinCumplirVencido(h)?'fila-alerta':''}">
+              <td class="col-desc">${escapeHtml(h.desc)}</td>
+              <td>${escapeHtml(h.tipo)}</td>
+              <td>${h.pct}%</td>
+              <td>$${h.montoUSD.toLocaleString("es-AR")}</td>
+              <td style="text-align:center;">
+                ${hitoListoParaFacturar(h)
+                  ? `<span class="estado Facturado" title="El PM marcó este hito como cumplido. Listo para facturar.">✓ Cumplido — a facturar</span>`
+                  : h.hitoCumplido
+                    ? `<span class="estado Pagado">✓ Cumplido</span>`
+                    : hitoSinCumplirVencido(h)
+                      ? `<span class="estado Vencido" title="Ya llegó la fecha de facturación y el PM todavía no marcó el hito como cumplido. Consultale por qué no se cumplió y cuándo estima que se va a cumplir, para que actualice la fecha desde el Módulo Proyecto.">⚠ Vencido, sin cumplir</span>`
+                      : `<span class="estado Pendiente">— Pendiente</span>`}
+              </td>
+              <td>${fmt(h.fact)}</td>
+              <td>
+                <label class="chk-row" style="justify-content:center;">
+                  <input type="checkbox" ${h.facturaEnviada?"checked":""} onchange="marcarFacturaEnviada('${p.id}',${h.id},this.checked)" />
+                  <span style="font-size:12px;">${h.facturaEnviada?"Enviada":(facturaSinAviso(h)?"⚠ Sin confirmar":"Pendiente")}</span>
+                </label>
+              </td>
+              <td>
+                <input type="text" value="${escapeHtml(h.facturaNumero||"")}" placeholder="N° / referencia" style="width:90px;font-size:12px;" onchange="marcarCampoHito('${p.id}',${h.id},'facturaNumero',this.value)" />
+                <button class="substat-btn" style="padding:3px 7px;font-size:11px;margin-left:4px;" onclick="abrirGenerarFactura('${p.id}',${h.id})" title="Generar factura (proforma) en PDF">📄 PDF</button>
+              </td>
+              <td>${fmt(h.cobro)}</td>
+              <td style="text-align:center;">
+                <input type="checkbox" ${h.facturaCobrada?"checked":""} onchange="marcarCampoHito('${p.id}',${h.id},'facturaCobrada',this.checked)" />
+                ${facturaSinCobrar(h) ? `<span class="estado Vencido" title="Se envió la factura pero no se marcó cobrada, y ya pasó la fecha de cobro esperada." style="margin-left:6px;">⚠ Vencida</span>` : ""}
+              </td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `).join("");
+}
+
+function marcarHitoCumplido(pid, hid, checked){
+  const {p,h} = hito(pid,hid);
+  h.hitoCumplido = checked;
+  guardarCampoHitoFact(h, { Hito_x0020_cumplido: checked });
+  mostrarToast(checked
+    ? `✓ Hito marcado como cumplido — aviso enviado a Administración para facturar (${p.nombre})`
+    : "Hito desmarcado como cumplido");
+  renderFacturacionClientes();
+  actualizarBadgeVencidos();
+  if(proyectoModalId===pid) refrescarModalProyecto();
+  if(vistaActual==="proyectos") renderProyectos();
+}
+
+function marcarFacturaEnviada(pid, hid, checked){
+  const {h} = hito(pid,hid);
+  h.facturaEnviada = checked;
+  guardarCampoHitoFact(h, { Factura_x0020_enviada: checked });
+  mostrarToast(checked ? "Factura marcada como enviada" : "Factura marcada como no enviada");
+  renderFacturacionClientes();
+  actualizarBadgeVencidos();
+  if(proyectoModalId===pid) refrescarModalProyecto();
+}
+
+const CAMPO_HITO_FACT_A_SP = {
+  facturaNumero: "N_x00b0__x0020_de_x0020_factura",
+  facturaCobrada: "Factura_x0020_cobrada",
+};
+function marcarCampoHito(pid, hid, campo, valor){
+  const {h} = hito(pid,hid);
+  h[campo] = valor;
+  const campoSp = CAMPO_HITO_FACT_A_SP[campo];
+  if(campoSp) guardarCampoHitoFact(h, { [campoSp]: valor });
+  mostrarToast("Guardado");
+  renderFacturacionClientes();
+  actualizarBadgeVencidos();
+  if(proyectoModalId===pid) refrescarModalProyecto();
+}
+
+function renderFacturacionProveedores(){
+  const cont = document.getElementById("vistaFacturacion");
+
+  const ordenesFiltradas = ordenesCompra.filter(o=>{
+    if(filtroFilialFacturacion){
+      const proy = proyectos.find(p=>p.id===o.proyectoId);
+      if(!proy || proy.filial !== filtroFilialFacturacion) return false;
+    }
+    const prov = o.proveedorId ? proveedores.find(pr=>pr.id===o.proveedorId) : null;
+    if(prov && !pasaFiltrosProveedor(prov)) return false;
+    if(!prov && filtrosCom.texto && !o.proveedor.toLowerCase().includes(filtrosCom.texto.toLowerCase())) return false;
+    return true;
+  });
+
+  if(!ordenesFiltradas.length){ cont.innerHTML = `<div class="empty-state">No hay hitos de pago a proveedores que coincidan.</div>`; return; }
+
+  // Agrupado por proyecto, con el mismo formato visual que Facturación a Clientes
+  // (nombre del proyecto en grande, y debajo el detalle por proveedor).
+  const porProyecto = new Map();
+  ordenesFiltradas.forEach(o=>{
+    const key = o.proyectoId || `__sin-proyecto__${o.proyecto}`;
+    if(!porProyecto.has(key)) porProyecto.set(key, []);
+    porProyecto.get(key).push(o);
+  });
+
+  cont.innerHTML = [...porProyecto.values()].map(ordenes=>{
+    const proy = proyectos.find(p=>p.id===ordenes[0].proyectoId);
+    const nombreProyecto = proy ? proy.nombre : (ordenes[0].proyecto || "Sin proyecto asociado");
+    const meta = proy ? `${escapeHtml(proy.cliente)} · PM: ${escapeHtml(proy.pm)}${proy.filial?` · Filial: ${escapeHtml(proy.filial)}`:''}` : "Sin proyecto vinculado en Proyectos_ERP";
+    return `
+    <div class="seccion-proyecto-fact">
+      <div class="seccion-proyecto-fact-head">
+        <span class="nombre">${escapeHtml(nombreProyecto)}</span>
+        <span class="meta">${meta}</span>
+      </div>
+      <div class="seccion-proyecto-fact-body">
+        <table class="hitos hitos-prov">
+          <thead><tr>
+            <th class="col-desc">Proveedor / Ítem</th>
+            <th>%</th>
+            <th>Fecha envío PO</th>
+            <th>Fecha de pago</th>
+            <th>PO enviada</th>
+            <th>N° de PO</th>
+            <th>Factura del proveedor</th>
+            <th>Factura pagada</th>
+            <th>Fecha de pago real</th>
+          </tr></thead>
+          <tbody>
+            ${ordenes.map(o=>{
+              const estado = estadoOrden(o);
+              const alarma = estado === "Vencido" || estado === "Proximo";
+              return `
+            <tr class="${alarma?'fila-alerta':''}">
+              <td class="col-desc">
+                <strong${o.proveedorId?` style="cursor:pointer;text-decoration:underline dotted;" onclick="abrirProveedor('${o.proveedorId}')" title="Ver ficha del proveedor"`:''}>${escapeHtml(o.proveedor)}</strong>
+                <div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)}</div>
+              </td>
+              <td>${o.pct}%</td>
+              <td>${fmt(o.envioPO)}</td>
+              <td>${fmt(o.pago)} ${alarma?`<span class="estado ${estado}" title="${escapeHtml(tituloEstadoOrden(o))}">${iconoEstadoOrden(o)}</span>`:''}</td>
+              <td><input type="checkbox" ${o.poEnviada?"checked":""} onchange="marcarCampoOrden(${o.id},'poEnviada',this.checked)" /></td>
+              <td>
+                <span style="font-size:12px;">${escapeHtml(o.poNumero||"—")}</span>
+                <button class="substat-btn" style="padding:3px 7px;font-size:11px;margin-left:4px;" onclick="abrirGenerarPO(${o.id})" title="Generar orden de compra en PDF">📄 PDF</button>
+              </td>
+              <td><input type="text" value="${escapeHtml(o.facturaProveedor||"")}" placeholder="N° / referencia" style="width:100px;font-size:12px;" onchange="marcarCampoOrden(${o.id},'facturaProveedor',this.value)" /></td>
+              <td><input type="checkbox" ${o.facturaPagada?"checked":""} onchange="marcarCampoOrden(${o.id},'facturaPagada',this.checked)" /></td>
+              <td><input type="date" value="${o.fechaPagoReal||""}" style="font-size:12px;" onchange="marcarCampoOrden(${o.id},'fechaPagoReal',this.value)" /></td>
+            </tr>`;}).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+const CAMPO_ORDEN_A_SP = {
+  poEnviada: "PO_x0020_enviada",
+  poNumero: "NumeroPO",
+  facturaProveedor: "Factura_x0020_del_x0020_proveedo",
+  facturaPagada: "Factura_x0020_pagada",
+  fechaPagoReal: "Fecha_x0020_de_x0020_pago_x0020_",
+};
+function marcarCampoOrden(oid, campo, valor){
+  const o = ordenById(oid);
+  o[campo] = valor;
+  const campoSp = CAMPO_ORDEN_A_SP[campo];
+  if(campoSp) guardarCampoOrdenProv(o, { [campoSp]: valor });
+  if(campo === "facturaPagada"){
+    mostrarToast(valor ? `✓ Pago a ${o.proveedor} confirmado` : "Pago a proveedor marcado como no pagado");
+  } else {
+    mostrarToast("Guardado");
+  }
+  renderFacturacionProveedores();
+  refrescarVistasOrdenes();
+}
+
+// =====================================================================
+// Generación de documentos (Factura proforma / PO) en PDF
+// =====================================================================
+let modalCtxDoc = null;
+
+function numeroSugeridoFactura(filial){
+  const anio = String(new Date().getFullYear()).slice(-2);
+  const usados = proyectos.filter(p=>p.filial===filial).flatMap(p=>p.hitos)
+    .map(h=>{ const m=/^(\d+)\/(\d{2})$/.exec(h.facturaNumero||""); return (m && m[2]===anio) ? parseInt(m[1],10) : null; })
+    .filter(n=>n!==null);
+  const siguiente = (usados.length ? Math.max(...usados) : 0) + 1;
+  return String(siguiente).padStart(5,"0") + "/" + anio;
+}
+function numeroSugeridoPO(filial){
+  const anio = String(new Date().getFullYear()).slice(-2);
+  const usados = ordenesCompra.filter(o=>{ const p=proyectos.find(x=>x.id===o.proyectoId); return p && p.filial===filial; })
+    .map(o=>{ const m=/^PO(\d+)\/(\d{2})$/.exec(o.poNumero||""); return (m && m[2]===anio) ? parseInt(m[1],10) : null; })
+    .filter(n=>n!==null);
+  const siguiente = (usados.length ? Math.max(...usados) : 0) + 1;
+  return "PO" + String(siguiente).padStart(5,"0") + "/" + anio;
+}
+
+function poblarSelectFilialesDoc(seleccion, tipo){
+  const sel = document.getElementById("genDocFilial");
+  sel.innerHTML = Object.keys(FILIALES).map(f=>`<option value="${f}" ${f===seleccion?"selected":""}>${f}</option>`).join("");
+  sel.onchange = ()=>{
+    document.getElementById("genDocNumero").value = tipo==="po" ? numeroSugeridoPO(sel.value) : numeroSugeridoFactura(sel.value);
+  };
+}
+
+function abrirGenerarFactura(pid, hid){
+  const {p,h} = hito(pid,hid);
+  const filial = p.filial || Object.keys(FILIALES)[0];
+  modalCtxDoc = { tipo:"factura", pid, hid };
+  document.getElementById("genDocTitulo").textContent = "Generar factura (proforma)";
+  document.getElementById("genDocMeta").textContent = `${p.nombre} — ${h.desc}${p.filial?"":" · ⚠ este proyecto no tiene filial asignada, revisala antes de generar"}`;
+  poblarSelectFilialesDoc(filial, "factura");
+  document.getElementById("genDocNumero").value = numeroSugeridoFactura(filial);
+  document.getElementById("genDocFecha").value = new Date().toISOString().slice(0,10);
+  document.getElementById("genDocConcepto").value = `${p.nombre} — ${h.desc}`;
+  document.getElementById("genDocMonto").value = h.montoUSD;
+  document.getElementById("genDocImpuestoPct").value = 0;
+  abrirModal("overlayGenerarDoc");
+}
+
+function abrirGenerarPO(oid){
+  const o = ordenById(oid);
+  const p = proyectos.find(x=>x.id===o.proyectoId);
+  const filial = (p && p.filial) || Object.keys(FILIALES)[0];
+  modalCtxDoc = { tipo:"po", oid };
+  document.getElementById("genDocTitulo").textContent = "Generar orden de compra (PO)";
+  document.getElementById("genDocMeta").textContent = `${o.proveedor} — ${o.item}${p && !p.filial?" · ⚠ este proyecto no tiene filial asignada, revisala antes de generar":""}`;
+  poblarSelectFilialesDoc(filial, "po");
+  document.getElementById("genDocNumero").value = numeroSugeridoPO(filial);
+  document.getElementById("genDocFecha").value = new Date().toISOString().slice(0,10);
+  document.getElementById("genDocConcepto").value = o.item;
+  document.getElementById("genDocMonto").value = "";
+  document.getElementById("genDocImpuestoPct").value = 0;
+  abrirModal("overlayGenerarDoc");
+}
+
+function confirmarGenerarDocumento(){
+  if(!modalCtxDoc) return;
+  const filial = document.getElementById("genDocFilial").value;
+  const numero = document.getElementById("genDocNumero").value.trim();
+  const fecha = document.getElementById("genDocFecha").value;
+  const concepto = document.getElementById("genDocConcepto").value;
+  const monto = parseFloat(document.getElementById("genDocMonto").value) || 0;
+  const impuestoPct = parseFloat(document.getElementById("genDocImpuestoPct").value) || 0;
+  if(!numero){ mostrarToast("⚠ Ingresá un número de documento"); return; }
+  if(!monto){ mostrarToast("⚠ Ingresá un monto"); return; }
+
+  if(modalCtxDoc.tipo === "factura"){
+    const {p,h} = hito(modalCtxDoc.pid, modalCtxDoc.hid);
+    generarPDFFactura({ filial, numero, fecha, concepto, monto, impuestoPct, proyecto:p });
+    h.facturaNumero = numero;
+    guardarCampoHitoFact(h, { N_x00b0__x0020_de_x0020_factura: numero });
+    mostrarToast(`✓ Factura ${numero} generada y descargada`);
+    renderFacturacionClientes();
+  } else {
+    const o = ordenById(modalCtxDoc.oid);
+    generarPDFPO({ filial, numero, fecha, concepto, monto, impuestoPct, orden:o });
+    o.poNumero = numero;
+    guardarCampoOrdenProv(o, { NumeroPO: numero });
+    mostrarToast(`✓ PO ${numero} generada y descargada`);
+    renderFacturacionProveedores();
+  }
+  cerrarModal("overlayGenerarDoc");
+}
+
+function _formatoMoneda(monto, filial){
+  const f = FILIALES[filial];
+  return `${f.monedaSimbolo} ${monto.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+}
+
+function generarPDFFactura({filial, numero, fecha, concepto, monto, impuestoPct, proyecto}){
+  const f = FILIALES[filial];
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"mm", format:"a4" });
+  const azul = [15,42,58], naranja = [230,126,34], gris = [110,120,125];
+  const anchoSidebar = 62, altoPag = 297;
+
+  doc.setFillColor(...azul);
+  doc.rect(0,0,anchoSidebar,altoPag,"F");
+  doc.setTextColor(255,255,255);
+  doc.setFont("helvetica","bold"); doc.setFontSize(15);
+  doc.text("SUNSET", 10, 18);
+  doc.setFontSize(7.5); doc.setFont("helvetica","normal");
+  doc.text("TECHNOLOGY", 10, 23);
+
+  let y = 42;
+  const seccion = (titulo, lineas)=>{
+    doc.setTextColor(...naranja); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+    doc.text(titulo.toUpperCase(), 10, y); y += 5;
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    lineas.filter(Boolean).forEach(l=>{
+      const partes = doc.splitTextToSize(l, anchoSidebar-16);
+      doc.text(partes, 10, y); y += 4.6*partes.length;
+    });
+    y += 4;
+  };
+  seccion("Factura N.°", [numero]);
+  seccion("Emisor", [f.razonSocial, `${f.idFiscalLabel} ${f.idFiscal}`, f.direccion]);
+  if(f.email) seccion("Contacto", [f.email]);
+  seccion("Forma de pago", ["Transferencia bancaria"]);
+  if(f.banco) seccion("Datos bancarios", [f.banco.detalle]);
+  seccion("Tipo de comprobante", [f.tipoComprobante]);
+
+  const xMain = anchoSidebar + 12;
+  doc.setTextColor(...azul); doc.setFont("helvetica","bold"); doc.setFontSize(28);
+  doc.text("Factura.", xMain, 26);
+  doc.setFontSize(8); doc.setTextColor(...gris); doc.setFont("helvetica","normal");
+  doc.text("FECHA DE EMISIÓN", 150, 18);
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...azul);
+  doc.text(fecha ? fecha.split("-").reverse().join(".") : "", 150, 23);
+
+  doc.setDrawColor(...azul); doc.setLineWidth(0.4);
+  doc.line(xMain, 33, 200, 33);
+
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(...azul);
+  doc.text(proyecto.clienteRazonSocial || proyecto.cliente || "", xMain, 42);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...gris);
+  let yc = 48;
+  if(proyecto.clienteIdFiscal){ doc.text(proyecto.clienteIdFiscal, xMain, yc); yc += 5; }
+  if(proyecto.clienteDireccionFiscal){ const p2=doc.splitTextToSize(proyecto.clienteDireccionFiscal, 70); doc.text(p2, xMain, yc); yc += 5*p2.length; }
+  if(proyecto.clienteEmailFacturacion){ doc.text(proyecto.clienteEmailFacturacion, xMain, yc); }
+
+  let yt = 68;
+  doc.setDrawColor(...gris); doc.setLineWidth(0.2); doc.line(xMain, yt, 200, yt);
+  yt += 6;
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...gris);
+  doc.text("CONCEPTO", xMain, yt); doc.text("TOTAL", 200, yt, {align:"right"});
+  yt += 3; doc.line(xMain, yt, 200, yt); yt += 7;
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...azul);
+  const conceptoLineas = doc.splitTextToSize(concepto, 100);
+  doc.text(conceptoLineas, xMain, yt);
+  doc.text(_formatoMoneda(monto, filial), 200, yt, {align:"right"});
+  yt += 6*conceptoLineas.length + 6;
+
+  const impuesto = monto * (impuestoPct/100);
+  const total = monto + impuesto;
+  doc.line(140, yt, 200, yt); yt += 6;
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...gris);
+  doc.text("Subtotal", 140, yt); doc.text(_formatoMoneda(monto, filial), 200, yt, {align:"right"}); yt += 6;
+  if(impuestoPct){
+    doc.text(`Impuesto ${impuestoPct}%`, 140, yt); doc.text(_formatoMoneda(impuesto, filial), 200, yt, {align:"right"}); yt += 6;
+  }
+  doc.setDrawColor(...naranja); doc.setLineWidth(0.6); doc.line(140, yt, 200, yt); yt += 8;
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...azul);
+  doc.text("TOTAL", 140, yt);
+  doc.setFontSize(14);
+  doc.text(_formatoMoneda(total, filial), 200, yt, {align:"right"});
+
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(...gris);
+  doc.text("Documento proforma generado desde el ERP de Sunset — no reemplaza el comprobante fiscal", xMain, 280, {maxWidth:130});
+  doc.text(`${filial}, ${fecha ? fecha.split("-").reverse().join(".") : ""}`, 200, 286, {align:"right"});
+
+  doc.save(`${numero.replace("/","-")} - ${(proyecto.cliente||"cliente").replace(/[\\/:*?"<>|]/g,"")} - ${(proyecto.nombre||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`);
+}
+
+function generarPDFPO({filial, numero, fecha, concepto, monto, impuestoPct, orden}){
+  const f = FILIALES[filial];
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"mm", format:"a4" });
+  const azul = [15,42,58], naranja = [230,126,34], gris = [110,120,125];
+
+  doc.setFillColor(...azul);
+  doc.rect(0,0,210,45,"F");
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(15);
+  doc.text("SUNSET", 12, 16);
+  doc.setFontSize(7.5); doc.setFont("helvetica","normal"); doc.text("TECHNOLOGY", 12, 21);
+  doc.setFontSize(22); doc.setFont("helvetica","bold");
+  doc.text("Purchase Order", 12, 34);
+  doc.setFontSize(7.5); doc.setTextColor(...naranja); doc.setFont("helvetica","normal");
+  doc.text("PROCUREMENT DOCUMENT", 12, 28);
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(7.5); doc.text("PO N.°", 150, 24);
+  doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(...naranja);
+  doc.text(numero, 150, 29);
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+  doc.text("PURCHASE DATE", 178, 24);
+  doc.setFont("helvetica","bold"); doc.setFontSize(10);
+  doc.text(fecha ? fecha.split("-").reverse().join(".") : "", 178, 29);
+
+  let y = 60;
+  doc.setTextColor(...naranja); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+  doc.text("ISSUED BY", 12, y);
+  doc.text("BILL TO", 110, y);
+  y += 6;
+  doc.setTextColor(...azul); doc.setFont("helvetica","bold"); doc.setFontSize(11);
+  doc.text(f.razonSocial, 12, y);
+  doc.text(orden.proveedor || "", 110, y);
+  y += 6;
+  doc.setTextColor(...gris); doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+  const emisorLineas = doc.splitTextToSize(`${f.idFiscalLabel} ${f.idFiscal}\n${f.direccion}`, 90);
+  doc.text(emisorLineas, 12, y);
+
+  y = 90;
+  doc.setDrawColor(...gris); doc.setLineWidth(0.2); doc.line(12, y, 200, y);
+  y += 7;
+  doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(...gris);
+  doc.text("CONCEPT", 12, y); doc.text("TOTAL", 200, y, {align:"right"});
+  y += 3; doc.line(12, y, 200, y); y += 7;
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(...azul);
+  const conceptoLineas = doc.splitTextToSize(concepto, 120);
+  doc.text(conceptoLineas, 12, y);
+  doc.text(_formatoMoneda(monto, filial), 200, y, {align:"right"});
+  y += 6*conceptoLineas.length + 8;
+
+  const impuesto = monto * (impuestoPct/100);
+  const total = monto + impuesto;
+  doc.line(140, y, 200, y); y += 6;
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(...gris);
+  doc.text("Subtotal", 140, y); doc.text(_formatoMoneda(monto, filial), 200, y, {align:"right"}); y += 6;
+  if(impuestoPct){
+    doc.text(`Impuesto ${impuestoPct}%`, 140, y); doc.text(_formatoMoneda(impuesto, filial), 200, y, {align:"right"}); y += 6;
+  }
+  doc.setFillColor(...azul); doc.rect(120, y, 80, 10, "F");
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+  doc.text("TOTAL", 124, y+6.5);
+  doc.setFontSize(13); doc.setTextColor(...naranja);
+  doc.text(_formatoMoneda(total, filial), 196, y+6.5, {align:"right"});
+
+  doc.setTextColor(...gris); doc.setFont("helvetica","normal"); doc.setFontSize(7.5);
+  doc.text("Please reference the PO number on all invoices and correspondence.", 12, 280, {maxWidth:120});
+  doc.text(`${filial}, ${fecha ? fecha.split("-").reverse().join(".") : ""}`, 200, 286, {align:"right"});
+
+  doc.save(`${numero.replace("/","-")} - ${(orden.proveedor||"proveedor").replace(/[\\/:*?"<>|]/g,"")} - ${(orden.item||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`);
+}
+
+function renderEstadisticasWrap(){
+  const cont = document.getElementById("vistaEstadisticas");
+  cont.innerHTML = `
+    <div class="substat-tabs">
+      <button class="substat-btn ${statsSubmodulo==='financiero'?'active':''}" onclick="cambiarStatsSubmodulo('financiero')">💰 Financiero</button>
+      <button class="substat-btn ${statsSubmodulo==='dotacion'?'active':''}" onclick="cambiarStatsSubmodulo('dotacion')">🧑‍💻 Dotación</button>
+      <button class="substat-btn ${statsSubmodulo==='compras'?'active':''}" onclick="cambiarStatsSubmodulo('compras')">🚚 Compras</button>
+    </div>
+    <div id="statsBody"></div>
+  `;
+  if(statsSubmodulo === "dotacion") renderEstadisticasDotacion();
+  else if(statsSubmodulo === "compras") renderEstadisticasCompras();
+  else renderEstadisticasFinanciero();
+}
+
+function cambiarStatsSubmodulo(m){
+  statsSubmodulo = m;
+  renderEstadisticasWrap();
+}
+
+document.getElementById("fFinBuscar").addEventListener("input", e=>{ filtrosFin.texto = e.target.value; renderProyectos(); });
+document.getElementById("fFinCliente").addEventListener("change", e=>{ filtrosFin.cliente = e.target.value; renderProyectos(); });
+document.getElementById("fFinPM").addEventListener("change", e=>{ filtrosFin.pm = e.target.value; renderProyectos(); });
+document.getElementById("fFinFilial").addEventListener("change", e=>{ filtrosFin.filial = e.target.value; renderProyectos(); });
+document.getElementById("fFinSoloAlerta").addEventListener("change", e=>{ filtrosFin.alerta = e.target.checked; renderProyectos(); });
+document.getElementById("btnLimpiarFin").addEventListener("click", ()=>{
+  filtrosFin = { texto:"", cliente:"", pm:"", filial:"", alerta:false };
+  document.getElementById("fFinBuscar").value = "";
+  document.getElementById("fFinCliente").value = "";
+  document.getElementById("fFinPM").value = "";
+  document.getElementById("fFinFilial").value = "";
+  document.getElementById("fFinSoloAlerta").checked = false;
+  renderProyectos();
+});
+
+// =====================================================================
+// MÓDULO DOTACIÓN / INGENIEROS
+// =====================================================================
+// TODO integración real: reemplazar por lectura de Ingenieros + Asignaciones_Proyecto +
+// Reservas_Pipeline + Ocupacion_Ingenieros vía Microsoft Graph (ver especificación técnica).
+
+const ESTANDAR_HS_MES = 160;
+
+let ingenieros = []; // Ingenieros + Asignaciones_Proyecto + Reservas_Pipeline — cargado desde SharePoint, ver cargarDatosERP()
+
+function pctDedicacionLinea(horas, meses){
+  if(!meses) return 0;
+  return (horas / meses) / ESTANDAR_HS_MES * 100;
+}
+
+function calcOcupacion(ing){
+  const comprometida = ing.asignaciones.filter(a=>a.estado==="Activo").reduce((s,a)=>s+a.pct, 0);
+  const reservada = ing.pipeline.reduce((s,r)=>s+pctDedicacionLinea(r.horas, r.meses), 0);
+  return { comprometida, reservada, total: comprometida + reservada };
+}
+function estadoAlertaIngeniero(oc){
+  if(oc.comprometida > 100) return "sobrecargado";
+  if(oc.total > 100) return "riesgo";
+  return "ok";
+}
+function labelAlerta(estado){
+  return estado === "sobrecargado" ? "Sobrecargado" : estado === "riesgo" ? "En riesgo (pipeline)" : "OK";
+}
+
+let filtrosDot = { texto:"", sucursal:"", estado:"Activo", soloAlerta:false };
+let ingenieroModalId = null;
+
+function poblarSelectsDot(){
+  const sucursales = [...new Set(ingenieros.map(i=>i.sucursal))].sort();
+  const sel = document.getElementById("fDotSucursal");
+  sel.innerHTML = '<option value="">Todas</option>' + sucursales.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+}
+
+function pasaFiltrosIngeniero(ing, oc, alerta){
+  if(filtrosDot.sucursal && ing.sucursal !== filtrosDot.sucursal) return false;
+  if(filtrosDot.estado && ing.estado !== filtrosDot.estado) return false;
+  if(filtrosDot.texto){
+    const t = filtrosDot.texto.toLowerCase();
+    if(!ing.nombre.toLowerCase().includes(t) && !ing.rol.toLowerCase().includes(t)) return false;
+  }
+  if(filtrosDot.soloAlerta && alerta === "ok") return false;
+  return true;
+}
+
+function renderIngenieros(){
+  const cont = document.getElementById("vistaIngenieros");
+  const conDatos = ingenieros.map(ing => {
+    const oc = calcOcupacion(ing);
+    const alerta = estadoAlertaIngeniero(oc);
+    return { ing, oc, alerta };
+  }).filter(d => pasaFiltrosIngeniero(d.ing, d.oc, d.alerta))
+    .sort((a,b) => b.oc.total - a.oc.total);
+
+  actualizarBadgeAlerta();
+  renderKpisDotacion();
+
+  if(conDatos.length === 0){
+    cont.innerHTML = `<div class="empty-state">No hay ingenieros que coincidan con los filtros.</div>`;
+    return;
+  }
+
+  const maxEscala = Math.max(150, ...conDatos.map(d => Math.ceil(d.oc.total / 10) * 10 + 10));
+
+  cont.innerHTML = `
+    <div class="leyenda">
+      <span><span class="sw" style="background:var(--azul-sunset);"></span>Comprometida (proyectos ganados)</span>
+      <span><span class="sw" style="background:repeating-linear-gradient(45deg,var(--reservado),var(--reservado) 3px,#c9dbdd 3px,#c9dbdd 6px);"></span>Reservada en pipeline</span>
+      <span>┊ línea = 100% de capacidad</span>
+    </div>
+  ` + conDatos.map(d => renderIngenieroRow(d.ing, d.oc, d.alerta, maxEscala)).join("");
+}
+
+function renderIngenieroRow(ing, oc, alerta, maxEscala){
+  const pctComp = Math.min(oc.comprometida, maxEscala) / maxEscala * 100;
+  const pctRes = Math.min(oc.reservada, maxEscala - Math.min(oc.comprometida,maxEscala)) / maxEscala * 100;
+  const marca100 = 100 / maxEscala * 100;
+  const badgeClase = alerta === "sobrecargado" ? "sobrecargado" : alerta === "riesgo" ? "riesgo" : "ok";
+
+  return `
+  <div class="ing" onclick="abrirIngeniero('${ing.id}')">
+    <div class="ing-id">
+      <div class="nombre">${escapeHtml(ing.nombre)}</div>
+      <div class="meta">${escapeHtml(ing.rol)} · ${escapeHtml(ing.sucursal)}</div>
+    </div>
+    <div class="ing-barra-wrap">
+      <div class="ing-barra-track">
+        <div class="ing-barra-comprometida" style="width:${pctComp}%;"></div>
+        <div class="ing-barra-reservada" style="left:${pctComp}%;width:${pctRes}%;"></div>
+        <div class="marca-100" style="left:${marca100}%;"></div>
+      </div>
+      <div class="ing-barra-labels"><span>0%</span><span>100%</span><span>${maxEscala}%</span></div>
+    </div>
+    <div class="ing-nums">
+      <div class="ing-num"><div class="v">${oc.comprometida.toFixed(0)}%</div><div class="l">Comprometida</div></div>
+      <div class="ing-num"><div class="v">${oc.reservada.toFixed(0)}%</div><div class="l">Pipeline</div></div>
+      <div class="ing-num"><div class="v">${oc.total.toFixed(0)}%</div><div class="l">Total</div></div>
+    </div>
+    <span class="estado-badge ${badgeClase}">${labelAlerta(alerta)}</span>
+  </div>`;
+}
+
+function renderKpisDotacion(){
+  const activos = ingenieros.filter(i=>i.estado==="Activo");
+  const datos = activos.map(i => ({ ing:i, oc: calcOcupacion(i) }));
+  const sobrecargados = datos.filter(d => d.oc.comprometida > 100).length;
+  const enRiesgo = datos.filter(d => d.oc.comprometida <= 100 && d.oc.total > 100).length;
+  const promComprometida = datos.length ? Math.round(datos.reduce((s,d)=>s+d.oc.comprometida,0) / datos.length) : 0;
+
+  document.getElementById("kpisTop").innerHTML = `
+    <div class="stat-tile"><div class="num">${activos.length}</div><div class="lbl">Ingenieros activos</div></div>
+    <div class="stat-tile"><div class="num" style="color:${sobrecargados>0?'#C0392B':'#1E8E3E'}">${sobrecargados}</div><div class="lbl">Sobrecargados hoy</div><div class="sub">% comprometida &gt; 100%</div></div>
+    <div class="stat-tile"><div class="num" style="color:${enRiesgo>0?'#B8860B':'#1E8E3E'}">${enRiesgo}</div><div class="lbl">En riesgo por pipeline</div><div class="sub">si el pipeline reservado cierra</div></div>
+    <div class="stat-tile"><div class="num">${promComprometida}%</div><div class="lbl">Ocupación comprometida promedio</div></div>
+  `;
+}
+
+function renderEstadisticasDotacion(){
+  const cont = document.getElementById("statsBody");
+  const activos = ingenieros.filter(i=>i.estado==="Activo");
+  const datos = activos.map(i => ({ ing:i, oc: calcOcupacion(i) }));
+  const prom = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
+
+  const promComprometida = prom(datos.map(d=>d.oc.comprometida));
+  const promTotal = prom(datos.map(d=>d.oc.total));
+  const sobrecargados = datos.filter(d=>d.oc.comprometida>100).length;
+  const enRiesgo = datos.filter(d=>d.oc.comprometida<=100 && d.oc.total>100).length;
+  const sinAsignacion = datos.filter(d=>d.oc.comprometida===0).length;
+  const horasPipelineTotal = activos.reduce((s,i)=>s+i.pipeline.reduce((s2,r)=>s2+r.horas,0),0);
+
+  const sucursales = [...new Set(activos.map(i=>i.sucursal))];
+  const filasSucursal = sucursales.map(suc=>{
+    const ds = datos.filter(d=>d.ing.sucursal===suc);
+    return { suc, n: ds.length, promCom: prom(ds.map(d=>d.oc.comprometida)), promTot: prom(ds.map(d=>d.oc.total)) };
+  });
+
+  const roles = [...new Set(activos.map(i=>i.rol))];
+  const filasRol = roles.map(rol=>{
+    const ds = datos.filter(d=>d.ing.rol===rol);
+    return { rol, n: ds.length, promCom: prom(ds.map(d=>d.oc.comprometida)), promTot: prom(ds.map(d=>d.oc.total)) };
+  });
+
+  const ranking = datos.slice().sort((a,b)=>b.oc.total-a.oc.total).slice(0,6);
+
+  const porOportunidad = {};
+  activos.forEach(i => i.pipeline.forEach(r=>{
+    const key = r.oportunidad;
+    if(!porOportunidad[key]) porOportunidad[key] = { oportunidad: r.oportunidad, cliente: r.cliente, ingenieros: 0, pctTotal: 0 };
+    porOportunidad[key].ingenieros += 1;
+    porOportunidad[key].pctTotal += pctDedicacionLinea(r.horas, r.meses);
+  }));
+  const filasOportunidad = Object.values(porOportunidad).sort((a,b)=>b.pctTotal-a.pctTotal);
+
+  cont.innerHTML = `
+    <div class="grid-stats">
+      <div class="stat-tile"><div class="num">${promComprometida}%</div><div class="lbl">Ocupación comprometida promedio</div><div class="sub">sobre ${activos.length} ingeniero(s) activo(s)</div></div>
+      <div class="stat-tile"><div class="num">${promTotal}%</div><div class="lbl">Ocupación total promedio</div><div class="sub">comprometida + reservada en pipeline</div></div>
+      <div class="stat-tile"><div class="num" style="color:${sobrecargados>0?'#C0392B':'#1E8E3E'}">${sobrecargados}</div><div class="lbl">Sobrecargados hoy</div><div class="sub">% comprometida &gt; 100%</div></div>
+      <div class="stat-tile"><div class="num" style="color:${enRiesgo>0?'#B8860B':'#1E8E3E'}">${enRiesgo}</div><div class="lbl">En riesgo por pipeline</div><div class="sub">si el pipeline reservado cierra</div></div>
+      <div class="stat-tile"><div class="num">${sinAsignacion}</div><div class="lbl">Sin asignación a proyectos</div><div class="sub">capacidad disponible hoy</div></div>
+      <div class="stat-tile"><div class="num">${horasPipelineTotal.toLocaleString("es-AR")} hs</div><div class="lbl">Horas reservadas en pipeline</div><div class="sub">suma de todas las oportunidades abiertas</div></div>
+    </div>
+
+    <div class="panel">
+      <h3>Ocupación promedio por sucursal</h3>
+      <table class="simple">
+        <thead><tr><th>Sucursal</th><th>Ingenieros activos</th><th>Comprometida prom.</th><th>Total prom.</th></tr></thead>
+        <tbody>
+          ${filasSucursal.map(f=>`<tr>
+            <td>${escapeHtml(f.suc)}</td><td>${f.n}</td><td>${f.promCom}%</td><td>${f.promTot}%</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Ocupación promedio por rol</h3>
+      <table class="simple">
+        <thead><tr><th>Rol</th><th>Ingenieros activos</th><th>Comprometida prom.</th><th>Total prom.</th></tr></thead>
+        <tbody>
+          ${filasRol.map(f=>`<tr>
+            <td>${escapeHtml(f.rol)}</td><td>${f.n}</td><td>${f.promCom}%</td><td>${f.promTot}%</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Ranking de ocupación total</h3>
+      <table class="simple">
+        <thead><tr><th>Ingeniero</th><th>Rol</th><th>Comprometida</th><th>Pipeline</th><th>Total</th></tr></thead>
+        <tbody>
+          ${ranking.map(d=>`<tr>
+            <td>${escapeHtml(d.ing.nombre)}</td>
+            <td>${escapeHtml(d.ing.rol)}</td>
+            <td>${d.oc.comprometida.toFixed(0)}%</td>
+            <td>${d.oc.reservada.toFixed(0)}%</td>
+            <td><strong>${d.oc.total.toFixed(0)}%</strong></td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Impacto de cada oportunidad de pipeline en la dotación</h3>
+      <div class="desc" style="margin-bottom:10px;">Si esta oportunidad se gana, esta es la ocupación total (sumada entre todos los ingenieros reservados) que va a consumir. Útil para anticipar sobrecarga antes de comprometerse comercialmente.</div>
+      <table class="simple">
+        <thead><tr><th>Oportunidad</th><th>Cliente</th><th>Ingenieros reservados</th><th>Ocupación total que consume</th></tr></thead>
+        <tbody>
+          ${filasOportunidad.length ? filasOportunidad.map(f=>`<tr>
+            <td>${escapeHtml(f.oportunidad)}</td>
+            <td>${escapeHtml(f.cliente)}</td>
+            <td>${f.ingenieros}</td>
+            <td><strong>${f.pctTotal.toFixed(0)}%</strong></td>
+          </tr>`).join("") : `<tr><td colspan="4" style="color:var(--gris);">Sin reservas de pipeline registradas.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function actualizarBadgeAlerta(){
+  const activos = ingenieros.filter(i=>i.estado==="Activo");
+  const totalAlertas = activos.filter(i => estadoAlertaIngeniero(calcOcupacion(i)) !== "ok").length;
+  const el = document.getElementById("badgeAlerta");
+  if(totalAlertas>0){
+    el.textContent = `⚠ ${totalAlertas} ingeniero(s) sobrecargado(s) o en riesgo`;
+    el.classList.add("show");
+  } else {
+    el.classList.remove("show");
+  }
+}
+
+function abrirIngeniero(id){
+  ingenieroModalId = id;
+  const ing = ingenieros.find(i=>i.id===id);
+  const oc = calcOcupacion(ing);
+  const alerta = estadoAlertaIngeniero(oc);
+
+  document.getElementById("ingModalNombre").textContent = ing.nombre;
+  document.getElementById("ingModalMeta").textContent = `${ing.rol} · ${ing.sucursal} · ${ing.estado}`;
+  document.getElementById("ingModalKpis").innerHTML = `
+    <div class="stat-tile"><div class="num">${oc.comprometida.toFixed(0)}%</div><div class="lbl">Comprometida</div></div>
+    <div class="stat-tile"><div class="num">${oc.reservada.toFixed(0)}%</div><div class="lbl">Reservada en pipeline</div></div>
+    <div class="stat-tile"><div class="num" style="color:${alerta==='sobrecargado'?'#C0392B':alerta==='riesgo'?'#B8860B':'#1E8E3E'}">${oc.total.toFixed(0)}%</div><div class="lbl">Total (${labelAlerta(alerta)})</div></div>
+  `;
+
+  const contProy = document.getElementById("ingModalProyectos");
+  if(ing.asignaciones.length === 0){
+    contProy.innerHTML = `<p style="color:var(--gris);font-size:12.5px;">Sin asignaciones a proyectos ganados.</p>`;
+  } else {
+    contProy.innerHTML = `<table class="simple"><thead><tr>
+        <th>Proyecto</th><th>Rol</th><th>% Dedicación</th><th>Inicio</th><th>Fin</th><th>Estado</th>
+      </tr></thead><tbody>
+        ${ing.asignaciones.map(a=>`<tr>
+          <td>${escapeHtml(a.proyecto)}</td>
+          <td>${escapeHtml(a.rolProyecto)}</td>
+          <td><strong>${a.pct}%</strong></td>
+          <td>${fmt(a.inicio)}</td>
+          <td>${fmt(a.fin)}</td>
+          <td>${escapeHtml(a.estado)}</td>
+        </tr>`).join("")}
+      </tbody></table>`;
+  }
+
+  const contPipe = document.getElementById("ingModalPipeline");
+  if(ing.pipeline.length === 0){
+    contPipe.innerHTML = `<p style="color:var(--gris);font-size:12.5px;">Sin reservas en oportunidades de pipeline abiertas.</p>`;
+  } else {
+    contPipe.innerHTML = `<table class="simple"><thead><tr>
+        <th>Oportunidad</th><th>Cliente</th><th>Horas / Meses</th><th>% Dedicación est.</th><th>Actualizado</th>
+      </tr></thead><tbody>
+        ${ing.pipeline.map(r=>`<tr>
+          <td>${escapeHtml(r.oportunidad)}</td>
+          <td>${escapeHtml(r.cliente)}</td>
+          <td>${r.horas} hs / ${r.meses} ${r.meses===1?'mes':'meses'}</td>
+          <td><strong>${pctDedicacionLinea(r.horas,r.meses).toFixed(1)}%</strong></td>
+          <td>${fmt(r.actualizado)}</td>
+        </tr>`).join("")}
+      </tbody></table>`;
+  }
+
+  abrirModal("overlayIngeniero");
+}
+
+document.getElementById("fDotBuscar").addEventListener("input", e=>{ filtrosDot.texto = e.target.value; renderIngenieros(); });
+document.getElementById("fDotSucursal").addEventListener("change", e=>{ filtrosDot.sucursal = e.target.value; renderIngenieros(); });
+document.getElementById("fDotEstado").addEventListener("change", e=>{ filtrosDot.estado = e.target.value; renderIngenieros(); });
+document.getElementById("fDotSoloAlerta").addEventListener("change", e=>{ filtrosDot.soloAlerta = e.target.checked; renderIngenieros(); });
+document.getElementById("btnLimpiarDot").addEventListener("click", ()=>{
+  filtrosDot = { texto:"", sucursal:"", estado:"Activo", soloAlerta:false };
+  document.getElementById("fDotBuscar").value = "";
+  document.getElementById("fDotSucursal").value = "";
+  document.getElementById("fDotEstado").value = "Activo";
+  document.getElementById("fDotSoloAlerta").checked = false;
+  renderIngenieros();
+});
+
+// =====================================================================
+// MÓDULO COMPRAS / PROVEEDORES
+// =====================================================================
+// TODO integración real: reemplazar por lectura de Proveedores + Hitos_Pago_Proveedores
+// (extendida) + Historial_Replanificacion vía Microsoft Graph (ver especificación técnica).
+// No hay Office Script nuevo: los datos de Plan Comercial siguen viniendo de GetHitosCANS
+// (ya corregido — ver especificación técnica de Compras, sección 4).
+
+let proveedores = []; // Proveedores — cargado desde SharePoint, ver cargarDatosERP()
+
+let ordenesCompra = []; // Hitos_Pago_Proveedores — cargado desde SharePoint, ver cargarDatosERP()
+
+// Días de anticipación con que se avisa que un pago a proveedor está por vencer (definido con Patricio: 3 días).
+const DIAS_ALERTA_PAGO_PROV = 3;
+
+function estadoOrden(o){
+  if(o.facturaPagada) return "Pagado";
+  if(!o.pago) return "Pendiente";
+  const dias = diffDias(HOY_ISO, o.pago); // días entre hoy y la fecha de pago (negativo = ya pasó)
+  if(dias < 0) return "Vencido";
+  if(dias <= DIAS_ALERTA_PAGO_PROV) return "Proximo";
+  return "Pendiente";
+}
+
+function tituloEstadoOrden(o){
+  const estado = estadoOrden(o);
+  if(estado === "Vencido") return "La fecha de pago ya pasó y todavía no está marcado como pagado.";
+  if(estado === "Proximo"){
+    const dias = diffDias(HOY_ISO, o.pago);
+    return dias === 0 ? "El pago vence hoy." : `El pago vence en ${dias} día(s).`;
+  }
+  if(estado === "Pagado") return "Pago confirmado.";
+  return "";
+}
+
+function iconoEstadoOrden(o){
+  const estado = estadoOrden(o);
+  if(estado === "Vencido") return "⚠ Vencido";
+  if(estado === "Proximo") return "⏰ Próximo a vencer";
+  if(estado === "Pagado") return "✓ Pagado";
+  return "Pendiente";
+}
+
+function renderTablaOrdenes(lista){
+  if(lista.length === 0){
+    return `<p style="color:var(--gris);font-size:12.5px;">Sin órdenes de pago a proveedores registradas.</p>`;
+  }
+  return `
+  <table class="hitos hitos-prov">
+    <thead>
+      <tr>
+        <th class="col-desc" rowspan="2">Proveedor / Item</th>
+        <th rowspan="2">%</th>
+        <th colspan="2">Estimado CANS</th>
+        <th colspan="2">Operativa</th>
+        <th rowspan="2">Estado</th>
+        <th rowspan="2">Acciones</th>
+      </tr>
+      <tr>
+        <th>Envío PO</th>
+        <th>Pago</th>
+        <th>Envío PO</th>
+        <th>Pago</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${lista.map(o=>renderOrdenRow(o)).join("")}
+    </tbody>
+  </table>`;
+}
+
+function renderOrdenRow(o){
+  const estado = estadoOrden(o);
+  const ultimoMotivo = o.historial.length ? o.historial[o.historial.length-1].motivo : null;
+
+  return `
+  <tr>
+    <td class="col-desc"><strong>${escapeHtml(o.proveedor)}</strong><div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)} · ${escapeHtml(o.proyecto)}</div>
+        ${ultimoMotivo ? `<span class="motivo-chip" title="${escapeHtml(ultimoMotivo)}">💬 ${escapeHtml(ultimoMotivo.slice(0,40))}${ultimoMotivo.length>40?'…':''}</span>` : ""}
+    </td>
+    <td>${o.pct}%</td>
+    <td>${fmt(o.comFact)}</td>
+    <td>${fmt(o.comPago)}</td>
+    <td>${fmt(o.envioPO)}</td>
+    <td>${fmt(o.pago)}</td>
+    <td><span class="estado ${estado}" title="${escapeHtml(tituloEstadoOrden(o))}">${iconoEstadoOrden(o)}</span></td>
+    <td>
+      <div class="acciones-hito">
+        <button class="btn-mini" onclick="event.stopPropagation();abrirReplanificarProv(${o.id})">Replanificar</button>
+        ${o.historial.length ? `<button class="btn-mini" onclick="event.stopPropagation();abrirHistorialProv(${o.id})">Historial (${o.historial.length})</button>` : ""}
+      </div>
+    </td>
+  </tr>`;
+}
+
+function ordenById(oid){ return ordenesCompra.find(x=>x.id===oid); }
+let modalCtxProv = null; // { oid }
+
+function abrirReplanificarProv(oid){
+  const o = ordenById(oid);
+  modalCtxProv = { oid };
+  document.getElementById("replanProvDesc").textContent = `${o.proveedor} — ${o.item} (${o.proyecto})`;
+  document.getElementById("replanProvFactura").value = o.envioPO || "";
+  document.getElementById("replanProvPago").value = o.pago || "";
+  document.getElementById("replanProvMotivo").value = "";
+  document.getElementById("errorMotivoProv").classList.remove("show");
+  abrirModal("overlayReplanificarProv");
+}
+
+function guardarReplanificacionProv(){
+  const { oid } = modalCtxProv;
+  const o = ordenById(oid);
+  const motivo = document.getElementById("replanProvMotivo").value.trim();
+  if(!motivo){ document.getElementById("errorMotivoProv").classList.add("show"); return; }
+  const nuevaFact = document.getElementById("replanProvFactura").value;
+  const nuevaPago = document.getElementById("replanProvPago").value;
+  const hoy = new Date().toISOString().slice(0,10);
+  const camposAActualizar = {};
+  if(nuevaFact && nuevaFact !== o.envioPO){
+    o.historial.push({ campo:"Envío PO proveedor", de:o.envioPO, a:nuevaFact, motivo, fecha:hoy });
+    crearHistorialProveedor(o._spId, "Envío PO proveedor", o.envioPO, nuevaFact, motivo);
+    camposAActualizar["Fecha_x0020_de_x0020_env_x00ed_o"] = nuevaFact;
+    o.envioPO = nuevaFact;
+  }
+  if(nuevaPago && nuevaPago !== o.pago){
+    o.historial.push({ campo:"Pago proveedor", de:o.pago, a:nuevaPago, motivo, fecha:hoy });
+    crearHistorialProveedor(o._spId, "Pago proveedor", o.pago, nuevaPago, motivo);
+    camposAActualizar["Fecha_x0020_de_x0020_pago"] = nuevaPago;
+    o.pago = nuevaPago;
+  }
+  if(Object.keys(camposAActualizar).length) guardarCampoOrdenProv(o, camposAActualizar);
+  cerrarModal("overlayReplanificarProv");
+  mostrarToast("Fechas de pago a proveedor actualizadas");
+  refrescarVistasOrdenes();
+}
+
+function abrirHistorialProv(oid){
+  const o = ordenById(oid);
+  document.getElementById("histProvDesc").textContent = `${o.proveedor} — ${o.item} (${o.proyecto})`;
+  document.getElementById("histProvBody").innerHTML = o.historial.slice().reverse().map(ev => `
+    <div style="border-bottom:1px solid #eef1f2;padding:8px 0;">
+      <div><strong>${fmt(ev.fecha)}</strong> — ${escapeHtml(ev.campo||"")}: ${escapeHtml(fmt(ev.de))} → <strong>${escapeHtml(fmt(ev.a))}</strong></div>
+      <div style="color:var(--gris);margin-top:2px;">${escapeHtml(ev.motivo)}</div>
+    </div>`).join("") || "<p>Sin cambios registrados.</p>";
+  abrirModal("overlayHistorialProv");
+}
+
+function refrescarVistasOrdenes(){
+  if(proyectoModalId) refrescarModalProyecto();
+  if(proveedorModalId) refrescarModalProveedor();
+  if(vistaActual === "facturacion" && facturacionSubvista === "proveedores") renderFacturacionProveedores();
+  actualizarBadgeCompras();
+}
+
+let filtrosCom = { texto:"", categoria:"", estado:"Activo" };
+let proveedorModalId = null;
+
+function poblarSelectsCom(){
+  const categorias = [...new Set(proveedores.map(pr=>pr.categoria))].sort();
+  const sel = document.getElementById("fComCategoria");
+  sel.innerHTML = '<option value="">Todas</option>' + categorias.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+}
+
+function calcResumenProveedor(pr){
+  const ordenes = ordenesCompra.filter(o=>o.proveedorId===pr.id);
+  const abiertas = ordenes.filter(o=>estadoOrden(o)!=="Pagado");
+  const vencidas = ordenes.filter(o=>estadoOrden(o)==="Vencido");
+  const proximos = ordenes.filter(o=>estadoOrden(o)==="Proximo");
+  const proximoVencimiento = abiertas.map(o=>o.pago).filter(Boolean).sort()[0] || null;
+  let peorEstado = "OK";
+  if(vencidas.length) peorEstado = "Vencido"; else if(proximos.length) peorEstado = "Proximo"; else if(abiertas.length) peorEstado = "Pendiente";
+  return { totalOrdenes: ordenes.length, abiertas: abiertas.length, vencidas: vencidas.length, proximos: proximos.length, proximoVencimiento, peorEstado };
+}
+
+function pasaFiltrosProveedor(pr){
+  if(filtrosCom.categoria && pr.categoria !== filtrosCom.categoria) return false;
+  if(filtrosCom.estado && pr.estado !== filtrosCom.estado) return false;
+  if(filtrosCom.texto){
+    const t = filtrosCom.texto.toLowerCase();
+    if(!pr.nombre.toLowerCase().includes(t)) return false;
+  }
+  return true;
+}
+
+function renderKpisCompras(){
+  const activos = proveedores.filter(pr=>pr.estado==="Activo");
+  const resumenes = activos.map(pr=>calcResumenProveedor(pr));
+  const totalVencidas = resumenes.reduce((s,r)=>s+r.vencidas,0);
+  const totalProximas = resumenes.reduce((s,r)=>s+r.proximos,0);
+  const totalAbiertas = resumenes.reduce((s,r)=>s+r.abiertas,0);
+  const conVencidas = resumenes.filter(r=>r.vencidas>0).length;
+  document.getElementById("kpisTopCom").innerHTML = `
+    <div class="stat-tile"><div class="num">${activos.length}</div><div class="lbl">Proveedores activos</div></div>
+    <div class="stat-tile"><div class="num">${totalAbiertas}</div><div class="lbl">Órdenes abiertas</div></div>
+    <div class="stat-tile"><div class="num" style="color:${totalProximas>0?'#B8860B':'#1E8E3E'}">${totalProximas}</div><div class="lbl">Por vencer (≤ ${DIAS_ALERTA_PAGO_PROV} días)</div></div>
+    <div class="stat-tile"><div class="num" style="color:${totalVencidas>0?'#C0392B':'#1E8E3E'}">${totalVencidas}</div><div class="lbl">Órdenes vencidas</div></div>
+    <div class="stat-tile"><div class="num" style="color:${conVencidas>0?'#C0392B':'#1E8E3E'}">${conVencidas}</div><div class="lbl">Proveedores con algo vencido</div></div>
+  `;
+}
+
+function actualizarBadgeCompras(){
+  const totalVencidas = ordenesCompra.filter(o=>estadoOrden(o)==="Vencido").length;
+  const el = document.getElementById("badgeCompras");
+  if(totalVencidas>0){
+    el.textContent = `⚠ ${totalVencidas} pago(s) a proveedor vencido(s)`;
+    el.classList.add("show");
+  } else {
+    el.classList.remove("show");
+  }
+
+  const totalProximos = ordenesCompra.filter(o=>estadoOrden(o)==="Proximo").length;
+  const elProx = document.getElementById("badgeProximoProv");
+  if(totalProximos>0){
+    elProx.textContent = `⏰ ${totalProximos} pago(s) a proveedor por vencer (≤ ${DIAS_ALERTA_PAGO_PROV} días)`;
+    elProx.classList.add("show");
+  } else {
+    elProx.classList.remove("show");
+  }
+}
+
+function abrirProveedor(id){
+  proveedorModalId = id;
+  refrescarModalProveedor();
+  abrirModal("overlayProveedor");
+}
+
+function refrescarModalProveedor(){
+  if(!proveedorModalId) return;
+  const pr = proveedores.find(x=>x.id===proveedorModalId);
+  const ordenes = ordenesCompra.filter(o=>o.proveedorId===pr.id);
+  const r = calcResumenProveedor(pr);
+  document.getElementById("provModalNombre").textContent = pr.nombre;
+  document.getElementById("provModalMeta").textContent = `${pr.categoria} · ${pr.contacto || "Sin contacto cargado"} · Condición habitual: ${pr.condicionPagoDiasHabitual} días`;
+  document.getElementById("provModalKpis").innerHTML = `
+    <div class="stat-tile"><div class="num">${r.totalOrdenes}</div><div class="lbl">Órdenes totales</div></div>
+    <div class="stat-tile"><div class="num">${r.abiertas}</div><div class="lbl">Abiertas</div></div>
+    <div class="stat-tile"><div class="num" style="color:${r.vencidas>0?'#C0392B':'#1E8E3E'}">${r.vencidas}</div><div class="lbl">Vencidas</div></div>
+  `;
+  document.getElementById("provModalTablaWrap").innerHTML = renderTablaOrdenes(ordenes);
+}
+
+function renderEstadisticasCompras(){
+  const cont = document.getElementById("statsBody");
+  const prom = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+
+  const totalOrdenes = ordenesCompra.length;
+  const conPO = ordenesCompra.filter(o=>o.poEnviada).length;
+  const pagadas = ordenesCompra.filter(o=>o.facturaPagada);
+  const vencidas = ordenesCompra.filter(o=>estadoOrden(o)==="Vencido");
+  const conMora = pagadas.filter(o=>o.fechaPagoReal);
+  const promMora = prom(conMora.map(o=>diffDias(o.pago, o.fechaPagoReal)));
+
+  const porProveedor = proveedores.map(pr=>{
+    const suyas = ordenesCompra.filter(o=>o.proveedorId===pr.id);
+    const venc = suyas.filter(o=>estadoOrden(o)==="Vencido").length;
+    const poOk = suyas.filter(o=>o.poEnviada).length;
+    return { nombre: pr.nombre, n: suyas.length, vencidas: venc, poOk };
+  }).filter(f=>f.n>0).sort((a,b)=> b.vencidas - a.vencidas);
+
+  const motivos = ordenesCompra.flatMap(o=>o.historial.map(ev=>ev.motivo));
+
+  cont.innerHTML = `
+    <div class="grid-stats">
+      <div class="stat-tile"><div class="num">${totalOrdenes?Math.round(conPO/totalOrdenes*100):0}%</div><div class="lbl">Órdenes con PO enviada</div></div>
+      <div class="stat-tile"><div class="num">${totalOrdenes?Math.round(pagadas.length/totalOrdenes*100):0}%</div><div class="lbl">Facturas pagadas</div></div>
+      <div class="stat-tile"><div class="num" style="color:${vencidas.length>0?'#C0392B':'#1E8E3E'}">${vencidas.length}</div><div class="lbl">Órdenes vencidas hoy</div><div class="sub">fecha de pago operativa ya pasó y no está pagada</div></div>
+      <div class="stat-tile"><div class="num">${promMora==null?"—":(promMora>0?"+":"")+promMora+" d"}</div><div class="lbl">Mora de pago promedio</div><div class="sub">fecha de pago real vs. la fecha de pago operativa</div></div>
+      <div class="stat-tile"><div class="num">${pagadas.length} <span style="font-size:14px;color:var(--gris);">/ ${totalOrdenes}</span></div><div class="lbl">Pagadas / Total de órdenes</div></div>
+    </div>
+
+    <div class="panel">
+      <h3>Órdenes y vencimientos por proveedor</h3>
+      <table class="simple">
+        <thead><tr><th>Proveedor</th><th>Órdenes</th><th>Con PO enviada</th><th>Vencidas</th></tr></thead>
+        <tbody>
+          ${porProveedor.map(f=>`<tr>
+            <td>${escapeHtml(f.nombre)}</td>
+            <td>${f.n}</td>
+            <td>${f.poOk} / ${f.n}</td>
+            <td style="color:${f.vencidas>0?'var(--danger)':'inherit'}">${f.vencidas}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Motivos de replanificación a proveedores registrados</h3>
+      ${motivos.length ? `<table class="simple"><tbody>${motivos.map(m=>`<tr><td>${escapeHtml(m)}</td></tr>`).join("")}</tbody></table>` : "<p style='color:var(--gris);font-size:13px;'>Todavía no hay replanificaciones registradas.</p>"}
+    </div>
+  `;
+}
+
+document.getElementById("fComBuscar").addEventListener("input", e=>{ filtrosCom.texto = e.target.value; renderFacturacionProveedores(); });
+document.getElementById("fComCategoria").addEventListener("change", e=>{ filtrosCom.categoria = e.target.value; renderFacturacionProveedores(); });
+document.getElementById("fComEstado").addEventListener("change", e=>{ filtrosCom.estado = e.target.value; renderFacturacionProveedores(); });
+document.getElementById("btnLimpiarCom").addEventListener("click", ()=>{
+  filtrosCom = { texto:"", categoria:"", estado:"Activo" };
+  document.getElementById("fComBuscar").value = "";
+  document.getElementById("fComCategoria").value = "";
+  document.getElementById("fComEstado").value = "Activo";
+  renderFacturacionProveedores();
+});
+
+// =====================================================================
+// Navegación entre módulos (pestañas) y modales
+// =====================================================================
+let statsSubmodulo = "financiero";
+
+document.querySelectorAll(".module-tab").forEach(el=>{
+  el.addEventListener("click", ()=>{
+    document.querySelectorAll(".module-tab").forEach(n=>n.classList.remove("active"));
+    el.classList.add("active");
+    vistaActual = el.dataset.vista;
+
+    document.getElementById("panelFiltrosFin").style.display = vistaActual==="proyectos" ? "block" : "none";
+    document.getElementById("panelFiltrosDot").style.display = vistaActual==="ingenieros" ? "block" : "none";
+
+    document.getElementById("vistaProyectos").style.display = vistaActual==="proyectos" ? "block" : "none";
+    document.getElementById("vistaEstadisticas").style.display = vistaActual==="estadisticas" ? "block" : "none";
+    document.getElementById("vistaIngenierosWrap").style.display = vistaActual==="ingenieros" ? "block" : "none";
+    document.getElementById("vistaFacturacionWrap").style.display = vistaActual==="facturacion" ? "block" : "none";
+    if(vistaActual!=="facturacion") actualizarPanelFiltroCompras();
+
+    if(vistaActual==="proyectos"){
+      document.getElementById("tituloVista").textContent = "Proyectos";
+      document.getElementById("subtituloVista").textContent = "Seguimiento de proyecto: fechas del CANS, replanificación y estatus";
+    } else if(vistaActual==="facturacion"){
+      document.getElementById("tituloVista").textContent = "Facturación";
+      document.getElementById("subtituloVista").textContent = "Ejecución: envío de facturas a clientes y pago a proveedores";
+      renderFacturacion();
+    } else if(vistaActual==="estadisticas"){
+      document.getElementById("tituloVista").textContent = "Estadísticas";
+      document.getElementById("subtituloVista").textContent = "Indicadores agregados de Financiero, Dotación y Compras";
+      renderEstadisticasWrap();
+    } else if(vistaActual==="ingenieros"){
+      document.getElementById("tituloVista").textContent = "Ingenieros";
+      document.getElementById("subtituloVista").textContent = "Ocupación comprometida (proyectos ganados) vs. reservada (pipeline sin ganar)";
+    }
+  });
+});
+
+document.querySelectorAll(".overlay").forEach(ov=>{
+  ov.addEventListener("click", e=>{ if(e.target === ov) cerrarModal(ov.id); });
+});
+document.addEventListener("keydown", e=>{
+  if(e.key !== "Escape") return;
+  const abiertos = [...document.querySelectorAll(".overlay.show")];
+  if(abiertos.length) cerrarModal(abiertos[abiertos.length-1].id);
+});
+
+// =====================================================================
+// Init (se llama desde despuesDeLogin(), una vez cargados los datos de SharePoint)
+// =====================================================================
+function inicializarVistaApp(){
+  poblarSelectsFin();
+  poblarSelectsDot();
+  poblarSelectsCom();
+  renderProyectos();
+  renderIngenieros();
+  actualizarBadgeVencidos();
+  actualizarBadgeAlerta();
+  actualizarBadgeCompras();
+}
+</script>
+</body>
+</html>
