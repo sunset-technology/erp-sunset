@@ -23,7 +23,7 @@
     --reservado:#9BB8BC;
   }
   *{box-sizing:border-box;}
-  html,body{height:100%;}
+  html{min-height:100%;}
   body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--fondo);color:var(--texto);display:flex;flex-direction:column;min-height:100vh;}
 
   /* Banner superior con marca */
@@ -41,7 +41,7 @@
   .app{display:flex;flex:1 1 auto;min-height:0;}
 
   /* Sidebar */
-  .sidebar{width:230px;flex:0 0 230px;background:var(--azul-sunset);color:#fff;display:flex;flex-direction:column;padding:16px 14px;position:sticky;top:0;align-self:flex-start;height:100%;min-height:100%;overflow-y:auto;}
+  .sidebar{width:230px;flex:0 0 230px;background:var(--azul-sunset);color:#fff;display:flex;flex-direction:column;padding:16px 14px;align-self:stretch;}
   .nav-divider{height:1px;background:rgba(255,255,255,.18);margin:10px 0 12px;}
   .sidebar label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;opacity:.75;margin:16px 0 6px;display:block;}
   .sidebar label:first-of-type{margin-top:2px;}
@@ -64,9 +64,12 @@
   main{padding:22px 24px 60px;}
 
   /* Solapas de módulo, estilo navegador (Chrome) */
-  .module-tabs{display:flex;gap:4px;padding:10px 20px 0;background:var(--azul-oscuro);}
+  .module-tabs{display:flex;gap:4px;padding:10px 20px 0;background:var(--azul-oscuro);position:sticky;top:0;z-index:30;}
   .module-tab{display:flex;align-items:center;gap:7px;padding:10px 20px;border-radius:9px 9px 0 0;cursor:pointer;font-size:13.5px;color:rgba(255,255,255,.72);}
   .module-tab:hover{color:#fff;}
+  .module-tab.bloqueado{opacity:.55;cursor:not-allowed;}
+  .module-tab.bloqueado:hover{color:rgba(255,255,255,.72);}
+  .module-tab .candado{font-size:11px;margin-left:2px;}
   .module-tab.active{background:var(--fondo);color:var(--texto);font-weight:700;}
 
   /* Proyecto card (Financiero) */
@@ -117,7 +120,7 @@
 
   .panel{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;padding:16px 18px;margin-bottom:18px;}
   .panel h3{margin:0 0 12px;font-size:14px;}
-  .substat-tabs{display:flex;gap:8px;margin-bottom:18px;position:sticky;top:0;z-index:20;background:var(--fondo);padding:10px 0;margin-top:-10px;}
+  .substat-tabs{display:flex;gap:8px;margin-bottom:18px;position:sticky;top:var(--alto-module-tabs,46px);z-index:20;background:var(--fondo);padding:10px 0;margin-top:-10px;}
   .substat-btn{padding:8px 16px;border-radius:20px;border:1px solid var(--gris-claro);background:#fff;font-size:13px;cursor:pointer;color:var(--gris);font-weight:600;}
   .substat-btn:hover{background:var(--badge-bg);}
   .substat-btn.active{background:var(--azul-sunset);color:#fff;border-color:var(--azul-sunset);}
@@ -371,10 +374,11 @@
       </div>
     </header>
     <div class="module-tabs">
-      <div class="module-tab active" data-vista="proyectos">🗂️ Proyectos</div>
-      <div class="module-tab" data-vista="facturacion">🧾 Facturación</div>
-      <div class="module-tab" data-vista="ingenieros">🧑‍💻 Ingenieros</div>
+      <div class="module-tab active" data-vista="proyectos" data-roles="pm,gerencia">🗂️ Proyectos</div>
+      <div class="module-tab" data-vista="facturacion" data-roles="administracion,gerencia">🧾 Facturación</div>
+      <div class="module-tab" data-vista="ingenieros" data-roles="pm,gerencia">🧑‍💻 Ingenieros</div>
       <div class="module-tab" data-vista="estadisticas" data-roles="gerencia,administracion">📊 Estadísticas</div>
+      <div class="module-tab" data-vista="archivo" data-roles="pm,administracion,gerencia">🗄️ Archivo</div>
     </div>
     <main>
       <div id="vistaProyectos"></div>
@@ -387,6 +391,18 @@
         <div id="vistaFacturacion"></div>
       </div>
       <div id="vistaEstadisticas" style="display:none;"></div>
+      <div id="vistaArchivoWrap" style="display:none;">
+        <div class="grid-stats" id="kpisArchivo"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+          <input type="text" id="fArchTexto" placeholder="Buscar proyecto, cliente o PM…" oninput="filtrarArchivo()" style="padding:7px 10px;border:1px solid var(--gris-claro);border-radius:6px;min-width:240px;font-size:13px;">
+          <select id="fArchCliente" onchange="filtrarArchivo()" style="padding:7px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;"></select>
+          <select id="fArchAnio" onchange="filtrarArchivo()" style="padding:7px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;"></select>
+          <select id="fArchFilial" onchange="filtrarArchivo()" style="padding:7px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;"></select>
+          <button class="btn-mini" onclick="limpiarFiltrosArchivo()">Limpiar</button>
+          <button class="btn-mini" style="margin-left:auto;" onclick="descargarCsvArchivo()">⬇ Descargar CSV</button>
+        </div>
+        <div id="archivoLista"></div>
+      </div>
       <div id="vistaIngenierosWrap" style="display:none;">
         <div class="grid-stats" id="kpisTop"></div>
         <div id="vistaIngenieros"></div>
@@ -403,6 +419,7 @@
         <div class="desc" id="proyModalMeta"></div>
       </div>
       <button class="btn-mini" style="margin-left:auto;" onclick="abrirEditarCliente(proyectoModalId)">✏️ Editar cliente</button>
+      <button class="btn-mini" id="btnArchivarProy" onclick="abrirArchivarProyecto(proyectoModalId)">🗄️ Archivar</button>
       <button class="modal-close" onclick="cerrarModal('overlayProyecto')" aria-label="Cerrar">✕</button>
     </div>
     <div class="kpis-proyecto" id="proyModalKpis" style="margin:16px 0 4px;"></div>
@@ -414,6 +431,40 @@
       <h4>Pago a proveedores</h4>
       <div style="overflow-x:auto;" id="proyModalTablaProvWrap"></div>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayArchivar">
+  <div class="modal">
+    <h3>🗄️ Archivar proyecto</h3>
+    <div class="desc" id="archivarTitulo" style="font-weight:600;"></div>
+    <div id="archivarResumen" style="font-size:12.5px;line-height:1.6;margin-bottom:10px;"></div>
+    <div class="campo">
+      <label>Notas de cierre (opcional): lecciones aprendidas, desvíos, pendientes con el cliente…</label>
+      <textarea id="archivarNotas" placeholder="Ej: proyecto cerrado sin desvíos. Cliente pidió extender soporte por 12 meses."></textarea>
+    </div>
+    <div style="font-size:11.5px;color:var(--gris);">El proyecto deja de aparecer en Proyectos y Facturación, pero no se borra nada: queda completo en la solapa Archivo y se puede restaurar.</div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayArchivar')">Cancelar</button>
+      <button class="btn btn-primario" id="btnConfirmarArchivar" onclick="confirmarArchivarProyecto()">Archivar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayFichaArchivo">
+  <div class="modal modal-grande">
+    <div class="modal-header">
+      <div>
+        <h3 id="fichaArchNombre"></h3>
+        <div class="desc" id="fichaArchMeta"></div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <button class="btn-mini" onclick="imprimirFichaArchivo()">🖨️ Imprimir / PDF</button>
+        <button class="btn-mini" id="btnRestaurarArch" onclick="restaurarProyectoArchivado(fichaArchivoId)">↩ Restaurar a activos</button>
+      </div>
+      <button class="modal-close" onclick="cerrarModal('overlayFichaArchivo')" aria-label="Cerrar">✕</button>
+    </div>
+    <div id="fichaArchCuerpo"></div>
   </div>
 </div>
 
@@ -860,6 +911,10 @@ async function cargarDatosERP(){
       clienteIdFiscal: c.ClienteIdFiscal || "",
       clienteDireccionFiscal: c.ClienteDireccionFiscal || "",
       clienteEmailFacturacion: c.ClienteEmailFacturacion || "",
+      archivado: !!c.Archivado,
+      fechaArchivo: soloFecha(c.FechaArchivo),
+      notasCierre: c.NotasCierre || "",
+      archivadoPor: c.ArchivadoPor || "",
       hitos: [],
     };
     proyectos.push(p);
@@ -1005,6 +1060,17 @@ async function cargarDatosERP(){
       historial: historialPorHitoProv.get(spId) || [],
     });
   });
+
+  // --- Proyectos archivados: salen de los listados activos y quedan en el Archivo ---
+  proyectosArchivo.length = 0;
+  ordenesArchivo.length = 0;
+  for(let i=proyectos.length-1;i>=0;i--){
+    if(proyectos[i].archivado) proyectosArchivo.push(...proyectos.splice(i,1));
+  }
+  const nombresArch = new Set(proyectosArchivo.map(p=>p.nombre));
+  for(let i=ordenesCompra.length-1;i>=0;i--){
+    if(nombresArch.has(ordenesCompra[i].proyecto)) ordenesArchivo.push(...ordenesCompra.splice(i,1));
+  }
 }
 
 // ---- Persistencia (escritura) desde las acciones del usuario ----
@@ -1065,14 +1131,37 @@ async function cargarRolesUsuario(){
   aplicarGatingDeRoles();
 }
 
+// Qué hacer con los módulos a los que el usuario no tiene acceso: "candado" (se ven bloqueados) u "ocultar".
+const MODO_MODULOS_SIN_ACCESO = "candado";
+
 function aplicarGatingDeRoles(){
-  document.querySelectorAll(".module-tab[data-roles]").forEach(tab=>{
-    if(rolesUsuario === null) { tab.style.display = ""; return; }
-    const permitidos = tab.dataset.roles.split(",");
-    const visible = permitidos.some(r => rolesUsuario.includes(r));
-    tab.style.display = visible ? "" : "none";
+  const tabs = [...document.querySelectorAll(".module-tab[data-roles]")];
+  tabs.forEach(tab=>{
+    const permitido = rolesUsuario === null || tab.dataset.roles.split(",").some(r => rolesUsuario.includes(r));
+    tab.classList.remove("bloqueado");
+    tab.style.display = "";
+    tab.querySelectorAll(".candado").forEach(n=>n.remove());
+    tab.removeAttribute("title");
+    if(permitido) return;
+    if(MODO_MODULOS_SIN_ACCESO === "ocultar"){ tab.style.display = "none"; return; }
+    tab.classList.add("bloqueado");
+    tab.title = "No tenés acceso a este módulo. Si lo necesitás, pedile acceso a Preventas.";
+    tab.insertAdjacentHTML("beforeend", ' <span class="candado">🔒</span>');
   });
+  // Si el módulo abierto quedó bloqueado, pasar al primero disponible
+  const activa = document.querySelector(".module-tab.active");
+  if(activa && (activa.classList.contains("bloqueado") || activa.style.display === "none")){
+    const libre = tabs.find(t=>!t.classList.contains("bloqueado") && t.style.display !== "none");
+    if(libre) libre.click();
+  }
+  ajustarAltoSolapas();
 }
+
+function ajustarAltoSolapas(){
+  const el = document.querySelector(".module-tabs");
+  if(el) document.documentElement.style.setProperty("--alto-module-tabs", el.offsetHeight + "px");
+}
+window.addEventListener("resize", ajustarAltoSolapas);
 
 // ---- Login / logout ----
 
@@ -1344,7 +1433,7 @@ function renderProyecto(p){
     <div class="proyecto-head" onclick="abrirProyecto('${p.id}')">
       <div class="proyecto-titulo">
         <div class="nombre">${escapeHtml(p.nombre)}</div>
-        <div class="meta">${escapeHtml(p.cliente)} · PM: ${escapeHtml(p.pm)} · ${p.hitos.length} hito(s)${p.filial?` · Filial: ${escapeHtml(p.filial)}`:''}</div>
+        <div class="meta">${escapeHtml(p.cliente)} · PM: ${escapeHtml(p.pm)} · ${p.hitos.length} hito(s)${p.filial?` · Filial: ${escapeHtml(p.filial)}`:''}${estadoCierreProyecto(p).ok?' · <span class="chip-definir" style="background:#E6F4EA;color:#1E6B34;border-color:#A8D5B5;">✅ Listo para archivar</span>':''}</div>
       </div>
       <div class="kpis-proyecto">
         ${renderKpisProyecto(p)}
@@ -1425,6 +1514,9 @@ function refrescarModalProyecto(){
   document.getElementById("proyModalKpis").innerHTML = renderKpisProyecto(p);
   document.getElementById("proyModalTablaWrap").innerHTML = renderTablaHitos(p);
   document.getElementById("proyModalTablaProvWrap").innerHTML = renderTablaOrdenes(ordenesCompra.filter(o=>o.proyecto===p.nombre));
+  const est = estadoCierreProyecto(p), bA = document.getElementById("btnArchivarProy");
+  bA.style.opacity = est.ok ? "1" : ".5";
+  bA.title = est.ok ? "Mover este proyecto al Archivo" : "Todavía no se puede archivar: " + est.motivos.join(", ");
 }
 
 function actualizarBadgeVencidos(){
@@ -3012,12 +3104,265 @@ async function renombrarClienteEnTodos(){
 }
 
 // =====================================================================
+// ARCHIVO de proyectos cerrados
+// =====================================================================
+// Un proyecto se puede archivar cuando todos sus hitos están cumplidos, facturados y cobrados.
+// Se marca con Archivado=Sí en Proyectos_ERP (no se borra nada): sale de Proyectos/Facturación
+// y queda consultable acá, con toda su información (hitos, proveedores, historial, notas de cierre).
+// Columnas necesarias en Proyectos_ERP: Archivado (Sí/No), FechaArchivo, NotasCierre, ArchivadoPor
+// (se crean una sola vez con crear_columnas_archivo.txt).
+let proyectosArchivo = [];
+let ordenesArchivo = [];
+let fichaArchivoId = null;
+let ctxArchivar = null;
+const filtrosArch = { q:"", cliente:"", anio:"", filial:"" };
+
+function tieneRol(...roles){ return rolesUsuario === null || roles.some(r=>rolesUsuario.includes(r)); }
+function usdA(n){ return (n==null||isNaN(n)) ? "—" : (n<0?"-":"") + "$" + Math.abs(Math.round(n)).toLocaleString("es-AR"); }
+
+function estadoCierreProyecto(p){
+  const motivos = [];
+  if(!p.hitos.length) motivos.push("el proyecto no tiene hitos cargados");
+  const sinCumplir = p.hitos.filter(h=>!h.hitoCumplido).length;
+  const sinFacturar = p.hitos.filter(h=>h.hitoCumplido && !h.facturaEnviada).length;
+  const sinCobrar = p.hitos.filter(h=>h.facturaEnviada && !h.facturaCobrada).length;
+  if(sinCumplir) motivos.push(`${sinCumplir} hito(s) sin cumplir`);
+  if(sinFacturar) motivos.push(`${sinFacturar} hito(s) cumplido(s) sin facturar`);
+  if(sinCobrar) motivos.push(`${sinCobrar} factura(s) sin cobrar`);
+  const provPend = ordenesCompra.filter(o=>o.proyecto===p.nombre && !o.facturaPagada).length;
+  return { ok: motivos.length===0, motivos, provPend };
+}
+
+function resumenFinancieroProyecto(p, ordenes){
+  const facturado = p.hitos.reduce((s,h)=>s+(h.montoUSD||0),0);
+  const cobrado = p.hitos.filter(h=>h.facturaCobrada).reduce((s,h)=>s+(h.montoUSD||0),0);
+  const costos = ordenes.reduce((s,o)=>s+(o.monto||0),0);
+  const sinMonto = ordenes.filter(o=>o.monto==null).length;
+  const margen = facturado - costos;
+  return { facturado, cobrado, costos, sinMonto, margen, margenPct: facturado>0 ? margen/facturado*100 : null };
+}
+
+// ---- Archivar ----
+function abrirArchivarProyecto(pid){
+  const p = proyectos.find(x=>x.id===pid);
+  if(!p) return;
+  if(!tieneRol("pm","gerencia","administracion")){ mostrarToast("🔒 No tenés permiso para archivar proyectos."); return; }
+  const est = estadoCierreProyecto(p);
+  if(!est.ok){ mostrarToast("Todavía no se puede archivar: " + est.motivos.join(", ") + "."); return; }
+  ctxArchivar = { pid };
+  const r = resumenFinancieroProyecto(p, ordenesCompra.filter(o=>o.proyecto===p.nombre));
+  document.getElementById("archivarTitulo").textContent = p.nombre;
+  document.getElementById("archivarResumen").innerHTML =
+    `${escapeHtml(p.cliente)} · ${p.hitos.length} hito(s) · Facturado y cobrado: <strong>${usdA(r.cobrado)}</strong> · Costos de terceros: <strong>${usdA(r.costos)}</strong> · Margen: <strong>${usdA(r.margen)}</strong>` +
+    (est.provPend ? `<div style="margin-top:8px;padding:8px 10px;background:#FFF3D6;border:1px solid #F0C36D;border-radius:6px;color:#8a5a00;">⚠ Hay ${est.provPend} pago(s) a proveedores todavía sin marcar como pagados. Podés archivar igual, pero conviene cerrarlos antes.</div>` : "");
+  document.getElementById("archivarNotas").value = "";
+  cerrarModal("overlayProyecto");
+  abrirModal("overlayArchivar");
+}
+
+async function confirmarArchivarProyecto(){
+  if(!ctxArchivar) return;
+  const p = proyectos.find(x=>x.id===ctxArchivar.pid);
+  if(!p) return;
+  const notas = document.getElementById("archivarNotas").value.trim();
+  const quien = (cuentaActual && (cuentaActual.name || cuentaActual.username)) || "";
+  const btn = document.getElementById("btnConfirmarArchivar");
+  btn.disabled = true;
+  try{
+    await actualizarItem("Proyectos_ERP", p._spId, { Archivado:true, FechaArchivo:HOY_ISO, NotasCierre:notas, ArchivadoPor:quien });
+  } catch(e){
+    console.error(e);
+    btn.disabled = false;
+    mostrarToast("⚠ No se pudo archivar. ¿Ya se crearon las columnas de archivo en Proyectos_ERP? (ver instrucciones)");
+    return;
+  }
+  btn.disabled = false;
+  p.archivado = true; p.fechaArchivo = HOY_ISO; p.notasCierre = notas; p.archivadoPor = quien;
+  const nombre = p.nombre;
+  proyectos.splice(proyectos.indexOf(p),1);
+  proyectosArchivo.push(p);
+  for(let i=ordenesCompra.length-1;i>=0;i--){
+    if(ordenesCompra[i].proyecto===nombre){ ordenesArchivo.push(ordenesCompra[i]); ordenesCompra.splice(i,1); }
+  }
+  proyectoModalId = null;
+  ctxArchivar = null;
+  cerrarModal("overlayArchivar");
+  refrescarTodoTrasEditar();
+  mostrarToast("🗄️ Proyecto archivado. Lo encontrás en la solapa Archivo.");
+}
+
+// ---- Restaurar ----
+async function restaurarProyectoArchivado(pid){
+  const p = proyectosArchivo.find(x=>x.id===pid);
+  if(!p) return;
+  if(!tieneRol("gerencia","administracion")){ mostrarToast("🔒 Solo Gerencia o Administración pueden restaurar un proyecto archivado."); return; }
+  if(!confirm(`¿Restaurar "${p.nombre}" a proyectos activos?`)) return;
+  try{
+    await actualizarItem("Proyectos_ERP", p._spId, { Archivado:false, FechaArchivo:null });
+  } catch(e){
+    console.error(e);
+    mostrarToast("⚠ No se pudo restaurar en SharePoint — reintentá.");
+    return;
+  }
+  p.archivado = false; p.fechaArchivo = null;
+  proyectosArchivo.splice(proyectosArchivo.indexOf(p),1);
+  proyectos.push(p);
+  for(let i=ordenesArchivo.length-1;i>=0;i--){
+    if(ordenesArchivo[i].proyecto===p.nombre){ ordenesCompra.push(ordenesArchivo[i]); ordenesArchivo.splice(i,1); }
+  }
+  fichaArchivoId = null;
+  cerrarModal("overlayFichaArchivo");
+  refrescarTodoTrasEditar();
+  renderArchivo();
+  mostrarToast("Proyecto restaurado a activos.");
+}
+
+// ---- Vista Archivo ----
+function anioArchivo(p){ return p.fechaArchivo ? p.fechaArchivo.slice(0,4) : ""; }
+function ordenesDeArchivado(p){ return ordenesArchivo.filter(o=>o.proyecto===p.nombre); }
+
+function poblarFiltrosArchivo(){
+  const llenar = (id, valores, actual, todas)=>{
+    const el = document.getElementById(id);
+    el.innerHTML = `<option value="">${todas}</option>` + valores.map(v=>`<option value="${escapeHtml(v)}" ${v===actual?"selected":""}>${escapeHtml(v)}</option>`).join("");
+  };
+  llenar("fArchCliente", [...new Set(proyectosArchivo.map(p=>p.cliente).filter(Boolean))].sort(), filtrosArch.cliente, "Todos los clientes");
+  llenar("fArchAnio", [...new Set(proyectosArchivo.map(anioArchivo).filter(Boolean))].sort().reverse(), filtrosArch.anio, "Todos los años");
+  llenar("fArchFilial", [...new Set(proyectosArchivo.map(p=>p.filial).filter(Boolean))].sort(), filtrosArch.filial, "Todas las filiales");
+}
+
+function filtrarArchivo(){
+  filtrosArch.q = document.getElementById("fArchTexto").value.trim().toLowerCase();
+  filtrosArch.cliente = document.getElementById("fArchCliente").value;
+  filtrosArch.anio = document.getElementById("fArchAnio").value;
+  filtrosArch.filial = document.getElementById("fArchFilial").value;
+  renderListaArchivo();
+}
+function limpiarFiltrosArchivo(){
+  document.getElementById("fArchTexto").value = "";
+  filtrosArch.cliente = filtrosArch.anio = filtrosArch.filial = "";
+  poblarFiltrosArchivo();
+  filtrarArchivo();
+}
+
+function renderArchivo(){
+  poblarFiltrosArchivo();
+  renderListaArchivo();
+}
+
+function renderListaArchivo(){
+  const lista = proyectosArchivo
+    .filter(p=>(!filtrosArch.cliente || p.cliente===filtrosArch.cliente)
+      && (!filtrosArch.anio || anioArchivo(p)===filtrosArch.anio)
+      && (!filtrosArch.filial || p.filial===filtrosArch.filial)
+      && (!filtrosArch.q || (p.nombre+" "+p.cliente+" "+p.pm+" "+p.id).toLowerCase().includes(filtrosArch.q)))
+    .sort((a,b)=>(b.fechaArchivo||"").localeCompare(a.fechaArchivo||""));
+  const filas = lista.map(p=>({ p, r: resumenFinancieroProyecto(p, ordenesDeArchivado(p)) }));
+  const tot = filas.reduce((t,f)=>({ fact:t.fact+f.r.facturado, cost:t.cost+f.r.costos, marg:t.marg+f.r.margen }),{fact:0,cost:0,marg:0});
+  document.getElementById("kpisArchivo").innerHTML = `
+    <div class="stat-tile"><div class="num">${lista.length}</div><div class="lbl">Proyectos archivados</div><div class="sub">${proyectosArchivo.length} en total</div></div>
+    <div class="stat-tile"><div class="num">${usdA(tot.fact)}</div><div class="lbl">Facturado</div></div>
+    <div class="stat-tile"><div class="num">${usdA(tot.cost)}</div><div class="lbl">Costos de terceros</div></div>
+    <div class="stat-tile"><div class="num" style="color:${tot.marg>=0?'#1E8E3E':'#C5221F'}">${usdA(tot.marg)}</div><div class="lbl">Margen</div><div class="sub">${tot.fact>0?(tot.marg/tot.fact*100).toFixed(1)+"% s/ facturado":""}</div></div>`;
+  const cont = document.getElementById("archivoLista");
+  if(!filas.length){
+    cont.innerHTML = `<div class="empty-state">${proyectosArchivo.length ? "Ningún proyecto archivado coincide con los filtros." : "Todavía no hay proyectos archivados. Cuando un proyecto tenga todos sus hitos cumplidos y cobrados, vas a poder archivarlo desde su ficha en Proyectos."}</div>`;
+    return;
+  }
+  cont.innerHTML = `
+  <div style="background:#fff;border:1px solid var(--gris-claro);border-radius:10px;overflow-x:auto;">
+  <table class="hitos" style="margin-top:0;">
+    <thead><tr><th>Proyecto</th><th>Cliente</th><th>Filial</th><th>PM</th><th>Inicio</th><th>Archivado</th><th style="text-align:right;">Facturado</th><th style="text-align:right;">Costos</th><th style="text-align:right;">Margen</th><th style="text-align:right;">Margen %</th></tr></thead>
+    <tbody>
+    ${filas.map(({p,r})=>`<tr style="cursor:pointer;" onclick="abrirFichaArchivo('${escapeHtml(p.id)}')">
+      <td class="col-desc"><strong>${escapeHtml(p.nombre)}</strong></td>
+      <td>${escapeHtml(p.cliente)}</td><td>${escapeHtml(p.filial)}</td><td>${escapeHtml(p.pm)||"—"}</td>
+      <td>${fmt(p.fechaInicioReal||p.fechaInicioEstimada)}</td><td>${fmt(p.fechaArchivo)}</td>
+      <td style="text-align:right;">${usdA(r.facturado)}</td>
+      <td style="text-align:right;">${usdA(r.costos)}${r.sinMonto?` <span title="${r.sinMonto} pago(s) sin monto cargado">*</span>`:""}</td>
+      <td style="text-align:right;font-weight:600;color:${r.margen>=0?'#1E8E3E':'#C5221F'}">${usdA(r.margen)}</td>
+      <td style="text-align:right;">${r.margenPct==null?"—":r.margenPct.toFixed(1)+"%"}</td>
+    </tr>`).join("")}
+    </tbody>
+  </table></div>
+  <div style="font-size:11.5px;color:var(--gris);margin-top:8px;">Click en un proyecto para ver su ficha completa. * = hay pagos a proveedores sin monto cargado (el costo puede estar subestimado).</div>`;
+}
+
+// ---- Ficha de un proyecto archivado ----
+function abrirFichaArchivo(pid){
+  fichaArchivoId = pid;
+  const p = proyectosArchivo.find(x=>x.id===pid);
+  if(!p) return;
+  const ords = ordenesDeArchivado(p);
+  const r = resumenFinancieroProyecto(p, ords);
+  document.getElementById("fichaArchNombre").textContent = p.nombre;
+  document.getElementById("fichaArchMeta").textContent = `${p.cliente} · PM: ${p.pm||"—"}${p.filial?` · Filial: ${p.filial}`:""} · Archivado el ${fmt(p.fechaArchivo)}${p.archivadoPor?` por ${p.archivadoPor}`:""}`;
+  document.getElementById("btnRestaurarArch").style.display = tieneRol("gerencia","administracion") ? "" : "none";
+  const dur = diffDias(p.fechaInicioReal||p.fechaInicioEstimada, p.fechaArchivo);
+  document.getElementById("fichaArchCuerpo").innerHTML = htmlFichaArchivo(p, ords, r, dur);
+  abrirModal("overlayFichaArchivo");
+}
+
+function htmlFichaArchivo(p, ords, r, dur){
+  const kpi = (v,l,c)=>`<div class="kpi-mini"><div class="valor" ${c?`style="color:${c}"`:""}>${v}</div><div class="label">${l}</div></div>`;
+  const hitosHtml = `<table class="hitos"><thead><tr><th class="col-desc">Hito</th><th>Tipo</th><th>%</th><th style="text-align:right;">Monto</th><th>Facturación</th><th>N° factura</th><th>Cobro</th><th>Cobrada</th></tr></thead><tbody>
+    ${p.hitos.map(h=>`<tr><td class="col-desc"><strong>${escapeHtml(h.desc)}</strong>${h.notasEstado?`<div class="motivo-chip">${escapeHtml(h.notasEstado)}</div>`:""}${h.historial.length?`<div class="motivo-chip">${h.historial.length} replanificación(es)</div>`:""}</td><td>${escapeHtml(h.tipo)}</td><td>${h.pct}%</td><td style="text-align:right;">${usdA(h.montoUSD)}</td><td>${fmt(h.fact)}</td><td>${escapeHtml(h.facturaNumero)||"—"}</td><td>${fmt(h.cobro)}</td><td>${h.facturaCobrada?"✓":"—"}</td></tr>`).join("")}
+  </tbody></table>`;
+  const provHtml = ords.length ? `<table class="hitos"><thead><tr><th class="col-desc">Proveedor / ítem</th><th style="text-align:right;">Monto</th><th>N° PO</th><th>Factura prov.</th><th>Pago</th><th>Pagado</th></tr></thead><tbody>
+    ${ords.map(o=>`<tr><td class="col-desc"><strong>${escapeHtml(esADefinir(o)?"Proveedor a definir":o.proveedor)}</strong><div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)}${o.detalle?" · "+escapeHtml(o.detalle):""}</div></td><td style="text-align:right;">${usdA(o.monto)}</td><td>${escapeHtml(o.poNumero)||"—"}</td><td>${escapeHtml(o.facturaProveedor)||"—"}</td><td>${fmt(o.fechaPagoReal||o.pago)}</td><td>${o.facturaPagada?"✓":"—"}</td></tr>`).join("")}
+  </tbody></table>` : `<div style="color:var(--gris);font-size:12.5px;">Sin pagos a proveedores registrados.</div>`;
+  const historial = p.hitos.flatMap(h=>h.historial.map(e=>({h,e}))).concat(ords.flatMap(o=>o.historial.map(e=>({h:{desc:o.proveedor+" — "+o.item},e}))));
+  const histHtml = historial.length ? `<table class="hitos"><thead><tr><th class="col-desc">Ítem</th><th>Campo</th><th>De</th><th>A</th><th>Motivo</th></tr></thead><tbody>
+    ${historial.map(({h,e})=>`<tr><td class="col-desc">${escapeHtml(h.desc)}</td><td>${escapeHtml(e.campo)}</td><td>${fmt(e.de)}</td><td>${fmt(e.a)}</td><td>${escapeHtml(e.motivo)}</td></tr>`).join("")}
+  </tbody></table>` : `<div style="color:var(--gris);font-size:12.5px;">Sin replanificaciones.</div>`;
+  return `
+    <div class="kpis-proyecto" style="margin:16px 0 4px;">
+      ${kpi(usdA(r.facturado),"Facturado")}${kpi(usdA(r.cobrado),"Cobrado")}${kpi(usdA(r.costos),"Costos de terceros")}
+      ${kpi(usdA(r.margen),"Margen",r.margen>=0?"var(--ok)":"var(--danger)")}${kpi(r.margenPct==null?"—":r.margenPct.toFixed(1)+"%","Margen %")}${kpi(dur==null?"—":dur+" d","Duración")}
+    </div>
+    <div class="panel-modal"><h4>Datos del cliente</h4>
+      <div style="font-size:12.5px;line-height:1.7;">Razón social: <strong>${escapeHtml(p.clienteRazonSocial)||"—"}</strong> · ID fiscal: ${escapeHtml(p.clienteIdFiscal)||"—"}<br>Dirección fiscal: ${escapeHtml(p.clienteDireccionFiscal)||"—"} · Email facturación: ${escapeHtml(p.clienteEmailFacturacion)||"—"}<br>ID proyecto: ${escapeHtml(p.id)} · Inicio estimado: ${fmt(p.fechaInicioEstimada)} · Inicio real: ${fmt(p.fechaInicioReal)}</div></div>
+    <div class="panel-modal"><h4>Notas de cierre</h4><div style="font-size:12.5px;white-space:pre-wrap;">${escapeHtml(p.notasCierre)||'<span style="color:var(--gris)">Sin notas.</span>'}</div></div>
+    <div class="panel-modal"><h4>Cobro a clientes</h4><div style="overflow-x:auto;">${hitosHtml}</div></div>
+    <div class="panel-modal"><h4>Pago a proveedores</h4><div style="overflow-x:auto;">${provHtml}</div></div>
+    <div class="panel-modal"><h4>Historial de replanificaciones</h4><div style="overflow-x:auto;">${histHtml}</div></div>`;
+}
+
+function imprimirFichaArchivo(){
+  const p = proyectosArchivo.find(x=>x.id===fichaArchivoId);
+  if(!p) return;
+  const w = window.open("", "_blank");
+  if(!w){ mostrarToast("El navegador bloqueó la ventana de impresión. Permití ventanas emergentes para esta página."); return; }
+  const ords = ordenesDeArchivado(p);
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(p.nombre)} — Ficha de cierre</title>
+  <style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12px;color:#222;margin:24px}h1{font-size:18px;margin:0}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border-bottom:1px solid #ddd;padding:4px 6px;text-align:left}th{font-size:10px;text-transform:uppercase;color:#666}h4{margin:18px 0 4px}.kpis-proyecto{display:flex;gap:24px;margin:12px 0}.kpi-mini .valor{font-size:16px;font-weight:700}.kpi-mini .label{font-size:10px;color:#666}.motivo-chip{font-size:10px;color:#666}</style></head><body>
+  <h1>${escapeHtml(p.nombre)}</h1><div>${escapeHtml(document.getElementById("fichaArchMeta").textContent)}</div>
+  ${htmlFichaArchivo(p, ords, resumenFinancieroProyecto(p, ords), diffDias(p.fechaInicioReal||p.fechaInicioEstimada, p.fechaArchivo))}
+  <script>window.onload=function(){window.print();}<\/script></body></html>`);
+  w.document.close();
+}
+
+function descargarCsvArchivo(){
+  const csv = v => { const s = String(v==null?"":v).replace(/"/g,'""'); return /[;"\n]/.test(s) ? `"${s}"` : s; };
+  const filas = [["ID","Proyecto","Cliente","Filial","PM","Inicio","Archivado","Facturado USD","Cobrado USD","Costos terceros USD","Margen USD","Margen %","Notas de cierre"]];
+  proyectosArchivo.forEach(p=>{
+    const r = resumenFinancieroProyecto(p, ordenesDeArchivado(p));
+    filas.push([p.id,p.nombre,p.cliente,p.filial,p.pm,p.fechaInicioReal||p.fechaInicioEstimada||"",p.fechaArchivo||"",r.facturado,r.cobrado,r.costos,r.margen,r.margenPct==null?"":r.margenPct.toFixed(1),p.notasCierre||""]);
+  });
+  const blob = new Blob(["﻿" + filas.map(f=>f.map(csv).join(";")).join("\r\n")], { type:"text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "archivo_proyectos_sunset.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// =====================================================================
 // Navegación entre módulos (pestañas) y modales
 // =====================================================================
 let statsSubmodulo = "financiero";
 
 document.querySelectorAll(".module-tab").forEach(el=>{
   el.addEventListener("click", ()=>{
+    if(el.classList.contains("bloqueado")){ mostrarToast("🔒 No tenés acceso a este módulo. Si lo necesitás, pedile acceso a Preventas."); return; }
     document.querySelectorAll(".module-tab").forEach(n=>n.classList.remove("active"));
     el.classList.add("active");
     vistaActual = el.dataset.vista;
@@ -3030,6 +3375,7 @@ document.querySelectorAll(".module-tab").forEach(el=>{
     document.getElementById("vistaEstadisticas").style.display = vistaActual==="estadisticas" ? "block" : "none";
     document.getElementById("vistaIngenierosWrap").style.display = vistaActual==="ingenieros" ? "block" : "none";
     document.getElementById("vistaFacturacionWrap").style.display = vistaActual==="facturacion" ? "block" : "none";
+    document.getElementById("vistaArchivoWrap").style.display = vistaActual==="archivo" ? "block" : "none";
     if(vistaActual!=="facturacion") actualizarPanelFiltroCompras();
 
     if(vistaActual==="proyectos"){
@@ -3043,6 +3389,10 @@ document.querySelectorAll(".module-tab").forEach(el=>{
       document.getElementById("tituloVista").textContent = "Estadísticas";
       document.getElementById("subtituloVista").textContent = "Indicadores agregados de Financiero, Dotación y Compras";
       renderEstadisticasWrap();
+    } else if(vistaActual==="archivo"){
+      document.getElementById("tituloVista").textContent = "Archivo";
+      document.getElementById("subtituloVista").textContent = "Proyectos cerrados: todo lo facturado, cobrado y pagado, para consulta histórica";
+      renderArchivo();
     } else if(vistaActual==="ingenieros"){
       document.getElementById("tituloVista").textContent = "Ingenieros";
       document.getElementById("subtituloVista").textContent = "Ocupación comprometida (proyectos ganados) vs. reservada (pipeline sin ganar)";
@@ -3063,6 +3413,7 @@ document.addEventListener("keydown", e=>{
 // Init (se llama desde despuesDeLogin(), una vez cargados los datos de SharePoint)
 // =====================================================================
 function inicializarVistaApp(){
+  ajustarAltoSolapas();
   poblarSelectsFin();
   poblarSelectsDot();
   poblarSelectsCom();
