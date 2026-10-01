@@ -2120,13 +2120,15 @@ async function generarPDFFactura({filial, numero, fecha, concepto, monto, impues
   doc.text(`${filial}, ${fecha ? fecha.split("-").reverse().join(".") : ""}`, 200, 286, {align:"right"});
 
   const nombreArchivo = `${numero.replace("/","-")} - ${(proyecto.cliente||"cliente").replace(/[\\/:*?"<>|]/g,"")} - ${(proyecto.nombre||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`;
-  doc.save(nombreArchivo);
+  // Se sube directo a SharePoint (Administración → Facturación → Facturas); no se descarga en la PC.
+  // Solo si la subida falla se descarga el PDF como respaldo, para no perderlo.
   try{
     await subirArchivoAdmin("Facturas", nombreArchivo, doc.output("arraybuffer"));
-    mostrarToast(`✓ Subida a SharePoint (Administración → Facturación → Facturas)`);
+    mostrarToast(`✓ Factura guardada en SharePoint: Administración → Facturación → Facturas ("${nombreArchivo}")`);
   } catch(e){
     console.error(e);
-    mostrarToast(`⚠ El PDF se descargó pero no se pudo subir a SharePoint automáticamente — subilo a mano a la carpeta Facturas`);
+    doc.save(nombreArchivo);
+    mostrarToast(`⚠ No se pudo subir a SharePoint; el PDF se descargó en tu PC — subilo a mano a la carpeta Facturas`);
   }
 }
 
@@ -2198,13 +2200,15 @@ async function generarPDFPO({filial, numero, fecha, concepto, monto, impuestoPct
   doc.text(`${filial}, ${fecha ? fecha.split("-").reverse().join(".") : ""}`, 200, 286, {align:"right"});
 
   const nombreArchivo = `${numero.replace("/","-")} - ${(orden.proveedor||"proveedor").replace(/[\\/:*?"<>|]/g,"")} - ${(orden.item||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`;
-  doc.save(nombreArchivo);
+  // Se sube directo a SharePoint (Administración → Facturación → PO); no se descarga en la PC.
+  // Solo si la subida falla se descarga el PDF como respaldo, para no perderlo.
   try{
     await subirArchivoAdmin("PO", nombreArchivo, doc.output("arraybuffer"));
-    mostrarToast(`✓ Subida a SharePoint (Administración → Facturación → PO)`);
+    mostrarToast(`✓ PO guardada en SharePoint: Administración → Facturación → PO ("${nombreArchivo}")`);
   } catch(e){
     console.error(e);
-    mostrarToast(`⚠ El PDF se descargó pero no se pudo subir a SharePoint automáticamente — subilo a mano a la carpeta PO`);
+    doc.save(nombreArchivo);
+    mostrarToast(`⚠ No se pudo subir a SharePoint; el PDF se descargó en tu PC — subilo a mano a la carpeta PO`);
   }
 }
 
