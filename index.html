@@ -468,6 +468,26 @@
   </div>
 </div>
 
+<div class="overlay" id="overlayInvoiceProv">
+  <div class="modal" style="width:560px;">
+    <h3>📎 Vincular invoice del proveedor</h3>
+    <div class="desc" id="invProvDesc" style="font-weight:600;"></div>
+    <div id="invActual" style="font-size:12.5px;margin-bottom:8px;"></div>
+    <div style="font-size:12px;color:var(--gris);margin-bottom:6px;">Elegí el archivo de la carpeta <strong>Facturas Proveedores</strong> (los más recientes primero):</div>
+    <input type="text" id="invBuscar" placeholder="Buscar por nombre…" oninput="renderListaInvoices()" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;margin-bottom:6px;">
+    <div id="invLista" style="max-height:260px;overflow-y:auto;border:1px solid var(--gris-claro);border-radius:6px;"></div>
+    <div style="margin-top:12px;font-size:12px;color:var(--gris);">¿Todavía no está en la carpeta?</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+      <label class="btn btn-secundario" style="padding:6px 12px;font-size:12.5px;cursor:pointer;">⬆ Subir desde mi PC<input type="file" style="display:none;" onchange="subirInvoiceDesdePC(this)"></label>
+      <input type="text" id="invLinkManual" placeholder="…o pegá un link" style="flex:1;padding:7px 10px;border:1px solid var(--gris-claro);border-radius:6px;font-size:12.5px;">
+      <button class="btn btn-secundario" style="padding:6px 12px;font-size:12.5px;" onclick="usarLinkManualInvoice()">Usar link</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayInvoiceProv')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="overlayReplanificar">
   <div class="modal">
     <h3>Replanificar hito</h3>
@@ -791,7 +811,10 @@ async function resolverSiteId(){
   return siteIdCache;
 }
 
-// ---- Sitio ADMINISTRACION-Facturacion (carpetas Facturas / PO) ----
+// ---- Sitio ADMINISTRACION-Facturacion (carpetas Facturas Cliente / PO / Facturas Proveedores) ----
+// Nombres de las carpetas en SharePoint: si se renombran allá, cambiarlos acá.
+const CARPETA_FACTURAS_CLIENTE = "Facturas Cliente";
+const CARPETA_PO = "PO";
 const SITE_PATH_ADMIN = "sunsettechnology567.sharepoint.com:/sites/ADMINISTRACION-Facturacin";
 let siteIdAdminCache = null;
 
@@ -804,7 +827,7 @@ async function resolverSiteIdAdmin(){
 
 async function subirArchivoAdmin(carpeta, nombreArchivo, arrayBuffer){
   const siteId = await resolverSiteIdAdmin();
-  const ruta = `${carpeta}/${encodeURIComponent(nombreArchivo)}`;
+  const ruta = `${encodeURIComponent(carpeta)}/${encodeURIComponent(nombreArchivo)}`;
   return graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${ruta}:/content`, {
     method: "PUT",
     headers: { "Content-Type": "application/pdf" },
@@ -1055,6 +1078,8 @@ async function cargarDatosERP(){
       monto: c.MontoUSD ?? null,
       detalle: c.Detalle || "",
       facturaProveedor: c["Factura_x0020_del_x0020_proveedo"] || "",
+      invoiceLink: c.LinkInvoice || "",
+      invoiceNombre: c.InvoiceNombre || "",
       facturaPagada: !!c.Factura_x0020_pagada,
       fechaPagoReal: soloFecha(c["Fecha_x0020_de_x0020_pago_x0020_"]),
       historial: historialPorHitoProv.get(spId) || [],
@@ -1910,7 +1935,8 @@ function renderFacturacionProveedores(){
                 <span style="font-size:12px;">${escapeHtml(o.poNumero||"—")}</span>
                 <button class="substat-btn" style="padding:3px 7px;font-size:11px;margin-left:4px;" onclick="abrirGenerarPO(${o.id})" title="Generar orden de compra en PDF">📄 PDF</button>
               </td>
-              <td><input type="text" value="${escapeHtml(o.facturaProveedor||"")}" placeholder="N° / referencia" style="width:100px;font-size:12px;" onchange="marcarCampoOrden(${o.id},'facturaProveedor',this.value)" /></td>
+              <td><input type="text" value="${escapeHtml(o.facturaProveedor||"")}" placeholder="N° / referencia" style="width:100px;font-size:12px;" onchange="marcarCampoOrden(${o.id},'facturaProveedor',this.value)" />
+                <div style="margin-top:4px;">${o.invoiceLink?`<a href="${escapeHtml(o.invoiceLink)}" target="_blank" rel="noopener" title="${escapeHtml(o.invoiceNombre||"Abrir invoice")}" style="font-size:11.5px;">📎 ${escapeHtml((o.invoiceNombre||"Invoice").slice(0,22))}${(o.invoiceNombre||"").length>22?"…":""}</a> `:""}<button class="btn-mini" onclick="abrirVincularInvoice(${o.id})" title="Elegir la invoice del proveedor desde la carpeta ${CARPETA_INVOICES_PROV}">${o.invoiceLink?"Cambiar":"📎 Vincular invoice"}</button></div></td>
               <td><input type="checkbox" ${o.facturaPagada?"checked":""} onchange="marcarCampoOrden(${o.id},'facturaPagada',this.checked)" /></td>
               <td><input type="date" value="${o.fechaPagoReal||""}" style="font-size:12px;" onchange="marcarCampoOrden(${o.id},'fechaPagoReal',this.value)" /></td>
             </tr>`;}).join("")}
@@ -1940,6 +1966,140 @@ function marcarCampoOrden(oid, campo, valor){
   }
   renderFacturacionProveedores();
   refrescarVistasOrdenes();
+}
+
+// =====================================================================
+// Invoices de proveedores (carpeta "Facturas Proveedores" del sitio Administración)
+// =====================================================================
+// La invoice llega por mail → alguien la guarda en la carpeta → en el ítem de pago correspondiente
+// se aprieta "Vincular invoice" y se elige el archivo. El ERP guarda el link en el ítem
+// (columnas LinkInvoice e InvoiceNombre de Hitos_Pago_Proveedores; ver crear_columnas_invoice.txt).
+const CARPETA_INVOICES_PROV = "Facturas Proveedores";
+let ctxInvoice = null;     // { oid }
+let invoicesCache = [];
+
+function fmtTamano(b){ return b==null ? "" : b<1048576 ? Math.max(1,Math.round(b/1024))+" KB" : (b/1048576).toFixed(1)+" MB"; }
+
+async function listarInvoicesProveedor(){
+  const siteId = await resolverSiteIdAdmin();
+  let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeURIComponent(CARPETA_INVOICES_PROV)}:/children?$select=id,name,webUrl,size,lastModifiedDateTime,file&$top=200`;
+  const items = [];
+  for(let i=0; url && i<10; i++){
+    const j = await graphFetch(url);
+    items.push(...(j.value||[]).filter(x=>x.file));
+    url = j["@odata.nextLink"] || null;
+  }
+  return items.sort((a,b)=>(b.lastModifiedDateTime||"").localeCompare(a.lastModifiedDateTime||""));
+}
+
+async function abrirVincularInvoice(oid){
+  const o = ordenById(oid);
+  if(!o) return;
+  ctxInvoice = { oid };
+  document.getElementById("invProvDesc").textContent = `${o.proveedor} — ${o.item} (${o.proyecto})${o.monto!=null?" · $"+o.monto.toLocaleString("es-AR"):""}`;
+  document.getElementById("invBuscar").value = "";
+  document.getElementById("invLinkManual").value = o.invoiceLink || "";
+  document.getElementById("invActual").innerHTML = o.invoiceLink
+    ? `Invoice actual: <a href="${escapeHtml(o.invoiceLink)}" target="_blank" rel="noopener">📎 ${escapeHtml(o.invoiceNombre||"abrir")}</a> <button class="btn-mini" onclick="quitarInvoice()">Quitar vínculo</button>`
+    : "";
+  document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Cargando archivos de “${CARPETA_INVOICES_PROV}”…</div>`;
+  abrirModal("overlayInvoiceProv");
+  try{
+    invoicesCache = await listarInvoicesProveedor();
+    renderListaInvoices();
+  } catch(e){
+    console.error(e);
+    invoicesCache = [];
+    const nofound = /404/.test(e.message);
+    document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:#8a5a00;background:#FFF3D6;border-radius:6px;font-size:12.5px;">${nofound
+      ? `La carpeta “${CARPETA_INVOICES_PROV}” todavía no existe en el sitio de Administración. Creala en SharePoint (en la misma raíz que Facturas Cliente y PO) o subí un archivo desde tu PC: se crea sola.`
+      : `No se pudo leer la carpeta (¿tenés acceso al sitio de Administración?). Podés subir un archivo desde tu PC o pegar un link.`}</div>`;
+  }
+}
+
+function renderListaInvoices(){
+  const q = document.getElementById("invBuscar").value.trim().toLowerCase();
+  const lista = invoicesCache.map((f,i)=>({f,i})).filter(({f})=>!q || f.name.toLowerCase().includes(q));
+  const cont = document.getElementById("invLista");
+  if(!invoicesCache.length){ cont.innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">La carpeta está vacía.</div>`; return; }
+  if(!lista.length){ cont.innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Ningún archivo coincide con la búsqueda.</div>`; return; }
+  cont.innerHTML = lista.map(({f,i})=>`
+    <div onclick="elegirInvoice(${i})" style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--gris-claro);cursor:pointer;font-size:12.5px;" onmouseover="this.style.background='#f3f7f9'" onmouseout="this.style.background=''">
+      <span style="flex:1;word-break:break-all;">📄 ${escapeHtml(f.name)}</span>
+      <span style="color:var(--gris);white-space:nowrap;">${fmt((f.lastModifiedDateTime||"").slice(0,10))} · ${fmtTamano(f.size)}</span>
+    </div>`).join("");
+}
+
+async function guardarInvoiceOrden(o, link, nombre){
+  try{
+    await actualizarItem("Hitos_Pago_Proveedores", o._spId, { LinkInvoice: link || "", InvoiceNombre: nombre || "" });
+  } catch(e){
+    console.error(e);
+    mostrarToast("⚠ No se pudo guardar el vínculo. ¿Ya se crearon las columnas LinkInvoice e InvoiceNombre? (ver instrucciones)");
+    return false;
+  }
+  o.invoiceLink = link || ""; o.invoiceNombre = nombre || "";
+  return true;
+}
+
+async function elegirInvoice(i){
+  const f = invoicesCache[i]; if(!f || !ctxInvoice) return;
+  const o = ordenById(ctxInvoice.oid);
+  if(await guardarInvoiceOrden(o, f.webUrl, f.name)){
+    cerrarModal("overlayInvoiceProv");
+    mostrarToast(`✓ Invoice vinculada: ${f.name}`);
+    renderFacturacionProveedores(); refrescarVistasOrdenes();
+  }
+}
+
+async function subirInvoiceDesdePC(input){
+  const file = input.files && input.files[0];
+  if(!file || !ctxInvoice) return;
+  const o = ordenById(ctxInvoice.oid);
+  document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Subiendo “${escapeHtml(file.name)}”…</div>`;
+  try{
+    const siteId = await resolverSiteIdAdmin();
+    // conflictBehavior=rename: si ya existe un archivo con ese nombre, no lo pisa
+    const sub = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeURIComponent(CARPETA_INVOICES_PROV)}/${encodeURIComponent(file.name)}:/content?@microsoft.graph.conflictBehavior=rename`, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: await file.arrayBuffer(),
+    });
+    if(await guardarInvoiceOrden(o, sub.webUrl, sub.name)){
+      cerrarModal("overlayInvoiceProv");
+      mostrarToast(`✓ Subida a “${CARPETA_INVOICES_PROV}” y vinculada: ${sub.name}`);
+      renderFacturacionProveedores(); refrescarVistasOrdenes();
+    }
+  } catch(e){
+    console.error(e);
+    mostrarToast("⚠ No se pudo subir el archivo a SharePoint. Guardalo a mano en la carpeta y elegilo de la lista.");
+    renderListaInvoices();
+  }
+  input.value = "";
+}
+
+async function usarLinkManualInvoice(){
+  const link = document.getElementById("invLinkManual").value.trim();
+  if(!link || !ctxInvoice) return;
+  if(!/^https?:\/\//i.test(link)){ mostrarToast("El link tiene que empezar con http:// o https://"); return; }
+  const o = ordenById(ctxInvoice.oid);
+  let nombre = "Invoice";
+  try{ nombre = decodeURIComponent(link.split("?")[0].split("/").pop()) || "Invoice"; }catch(e){}
+  if(await guardarInvoiceOrden(o, link, nombre)){
+    cerrarModal("overlayInvoiceProv");
+    mostrarToast("✓ Link de invoice guardado");
+    renderFacturacionProveedores(); refrescarVistasOrdenes();
+  }
+}
+
+async function quitarInvoice(){
+  if(!ctxInvoice) return;
+  const o = ordenById(ctxInvoice.oid);
+  if(await guardarInvoiceOrden(o, "", "")){
+    cerrarModal("overlayInvoiceProv");
+    mostrarToast("Vínculo de invoice quitado (el archivo sigue en la carpeta)");
+    renderFacturacionProveedores(); refrescarVistasOrdenes();
+  }
 }
 
 // =====================================================================
@@ -2120,15 +2280,15 @@ async function generarPDFFactura({filial, numero, fecha, concepto, monto, impues
   doc.text(`${filial}, ${fecha ? fecha.split("-").reverse().join(".") : ""}`, 200, 286, {align:"right"});
 
   const nombreArchivo = `${numero.replace("/","-")} - ${(proyecto.cliente||"cliente").replace(/[\\/:*?"<>|]/g,"")} - ${(proyecto.nombre||"").replace(/[\\/:*?"<>|]/g,"")}.pdf`;
-  // Se sube directo a SharePoint (Administración → Facturación → Facturas); no se descarga en la PC.
+  // Se sube directo a SharePoint (Administración → Facturación → Facturas Cliente); no se descarga en la PC.
   // Solo si la subida falla se descarga el PDF como respaldo, para no perderlo.
   try{
-    await subirArchivoAdmin("Facturas", nombreArchivo, doc.output("arraybuffer"));
-    mostrarToast(`✓ Factura guardada en SharePoint: Administración → Facturación → Facturas ("${nombreArchivo}")`);
+    await subirArchivoAdmin(CARPETA_FACTURAS_CLIENTE, nombreArchivo, doc.output("arraybuffer"));
+    mostrarToast(`✓ Factura guardada en SharePoint: Administración → Facturación → ${CARPETA_FACTURAS_CLIENTE} ("${nombreArchivo}")`);
   } catch(e){
     console.error(e);
     doc.save(nombreArchivo);
-    mostrarToast(`⚠ No se pudo subir a SharePoint; el PDF se descargó en tu PC — subilo a mano a la carpeta Facturas`);
+    mostrarToast(`⚠ No se pudo subir a SharePoint; el PDF se descargó en tu PC — subilo a mano a la carpeta ${CARPETA_FACTURAS_CLIENTE}`);
   }
 }
 
@@ -2203,7 +2363,7 @@ async function generarPDFPO({filial, numero, fecha, concepto, monto, impuestoPct
   // Se sube directo a SharePoint (Administración → Facturación → PO); no se descarga en la PC.
   // Solo si la subida falla se descarga el PDF como respaldo, para no perderlo.
   try{
-    await subirArchivoAdmin("PO", nombreArchivo, doc.output("arraybuffer"));
+    await subirArchivoAdmin(CARPETA_PO, nombreArchivo, doc.output("arraybuffer"));
     mostrarToast(`✓ PO guardada en SharePoint: Administración → Facturación → PO ("${nombreArchivo}")`);
   } catch(e){
     console.error(e);
@@ -3320,7 +3480,7 @@ function htmlFichaArchivo(p, ords, r, dur){
     ${p.hitos.map(h=>`<tr><td class="col-desc"><strong>${escapeHtml(h.desc)}</strong>${h.notasEstado?`<div class="motivo-chip">${escapeHtml(h.notasEstado)}</div>`:""}${h.historial.length?`<div class="motivo-chip">${h.historial.length} replanificación(es)</div>`:""}</td><td>${escapeHtml(h.tipo)}</td><td>${h.pct}%</td><td style="text-align:right;">${usdA(h.montoUSD)}</td><td>${fmt(h.fact)}</td><td>${escapeHtml(h.facturaNumero)||"—"}</td><td>${fmt(h.cobro)}</td><td>${h.facturaCobrada?"✓":"—"}</td></tr>`).join("")}
   </tbody></table>`;
   const provHtml = ords.length ? `<table class="hitos"><thead><tr><th class="col-desc">Proveedor / ítem</th><th style="text-align:right;">Monto</th><th>N° PO</th><th>Factura prov.</th><th>Pago</th><th>Pagado</th></tr></thead><tbody>
-    ${ords.map(o=>`<tr><td class="col-desc"><strong>${escapeHtml(esADefinir(o)?"Proveedor a definir":o.proveedor)}</strong><div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)}${o.detalle?" · "+escapeHtml(o.detalle):""}</div></td><td style="text-align:right;">${usdA(o.monto)}</td><td>${escapeHtml(o.poNumero)||"—"}</td><td>${escapeHtml(o.facturaProveedor)||"—"}</td><td>${fmt(o.fechaPagoReal||o.pago)}</td><td>${o.facturaPagada?"✓":"—"}</td></tr>`).join("")}
+    ${ords.map(o=>`<tr><td class="col-desc"><strong>${escapeHtml(esADefinir(o)?"Proveedor a definir":o.proveedor)}</strong><div class="motivo-chip" style="font-style:normal;">${escapeHtml(o.item)}${o.detalle?" · "+escapeHtml(o.detalle):""}</div></td><td style="text-align:right;">${usdA(o.monto)}</td><td>${escapeHtml(o.poNumero)||"—"}</td><td>${escapeHtml(o.facturaProveedor)||"—"}${o.invoiceLink?` <a href="${escapeHtml(o.invoiceLink)}" target="_blank" rel="noopener">📎</a>`:""}</td><td>${fmt(o.fechaPagoReal||o.pago)}</td><td>${o.facturaPagada?"✓":"—"}</td></tr>`).join("")}
   </tbody></table>` : `<div style="color:var(--gris);font-size:12.5px;">Sin pagos a proveedores registrados.</div>`;
   const historial = p.hitos.flatMap(h=>h.historial.map(e=>({h,e}))).concat(ords.flatMap(o=>o.historial.map(e=>({h:{desc:o.proveedor+" — "+o.item},e}))));
   const histHtml = historial.length ? `<table class="hitos"><thead><tr><th class="col-desc">Ítem</th><th>Campo</th><th>De</th><th>A</th><th>Motivo</th></tr></thead><tbody>
