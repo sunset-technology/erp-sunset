@@ -473,10 +473,12 @@
     <h3>📎 Vincular invoice del proveedor</h3>
     <div class="desc" id="invProvDesc" style="font-weight:600;"></div>
     <div id="invActual" style="font-size:12.5px;margin-bottom:8px;"></div>
-    <div style="font-size:12px;color:var(--gris);margin-bottom:6px;">Elegí el archivo de la carpeta <strong>Facturas Proveedores</strong> (los más recientes primero):</div>
+    <div style="font-size:12px;color:var(--gris);margin-bottom:6px;">Navegá por las carpetas (proveedor › proyecto) y elegí la invoice. Se abre sola en la carpeta del proveedor si existe.</div>
+    <div id="invRuta" style="font-size:12.5px;margin-bottom:6px;"></div>
     <input type="text" id="invBuscar" placeholder="Buscar por nombre…" oninput="renderListaInvoices()" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;margin-bottom:6px;">
     <div id="invLista" style="max-height:260px;overflow-y:auto;border:1px solid var(--gris-claro);border-radius:6px;"></div>
     <div style="margin-top:12px;font-size:12px;color:var(--gris);">¿Todavía no está en la carpeta?</div>
+    <div id="invDestino" style="font-size:11.5px;color:var(--gris);margin-top:2px;"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
       <label class="btn btn-secundario" style="padding:6px 12px;font-size:12.5px;cursor:pointer;">⬆ Subir desde mi PC<input type="file" style="display:none;" onchange="subirInvoiceDesdePC(this)"></label>
       <input type="text" id="invLinkManual" placeholder="…o pegá un link" style="flex:1;padding:7px 10px;border:1px solid var(--gris-claro);border-radius:6px;font-size:12.5px;">
@@ -1976,54 +1978,120 @@ function marcarCampoOrden(oid, campo, valor){
 // (columnas LinkInvoice e InvoiceNombre de Hitos_Pago_Proveedores; ver crear_columnas_invoice.txt).
 const CARPETA_INVOICES_PROV = "Facturas Proveedores";
 let ctxInvoice = null;     // { oid }
-let invoicesCache = [];
+
 
 function fmtTamano(b){ return b==null ? "" : b<1048576 ? Math.max(1,Math.round(b/1024))+" KB" : (b/1048576).toFixed(1)+" MB"; }
 
-async function listarInvoicesProveedor(){
+let invRuta = [];          // carpetas dentro de "Facturas Proveedores" donde se está parado (ej. ["Cisco","Proyecto X"])
+let invItems = [];         // contenido de la carpeta actual (carpetas + archivos)
+
+function normNombre(s){ return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim(); }
+function nombreCarpetaSeguro(s){ return String(s||"").replace(/[\\/:*?"<>|#%~&{}]/g,"").replace(/\s+/g," ").trim().replace(/[. ]+$/,""); }
+function rutaGraphInvoices(ruta){
+  return [CARPETA_INVOICES_PROV, ...ruta].map(encodeURIComponent).join("/");
+}
+
+async function listarCarpetaInvoices(ruta){
   const siteId = await resolverSiteIdAdmin();
-  let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeURIComponent(CARPETA_INVOICES_PROV)}:/children?$select=id,name,webUrl,size,lastModifiedDateTime,file&$top=200`;
+  let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${rutaGraphInvoices(ruta)}:/children?$select=id,name,webUrl,size,lastModifiedDateTime,file,folder&$top=200`;
   const items = [];
   for(let i=0; url && i<10; i++){
     const j = await graphFetch(url);
-    items.push(...(j.value||[]).filter(x=>x.file));
+    items.push(...(j.value||[]));
     url = j["@odata.nextLink"] || null;
   }
-  return items.sort((a,b)=>(b.lastModifiedDateTime||"").localeCompare(a.lastModifiedDateTime||""));
+  // carpetas primero (por nombre), después archivos (más recientes primero)
+  const carpetas = items.filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name,"es"));
+  const archivos = items.filter(x=>x.file).sort((a,b)=>(b.lastModifiedDateTime||"").localeCompare(a.lastModifiedDateTime||""));
+  return [...carpetas, ...archivos];
+}
+
+function mismoNombre(a,b){
+  const x = normNombre(a), y = normNombre(b);
+  return !!x && !!y && (x===y || x.includes(y) || y.includes(x));
 }
 
 async function abrirVincularInvoice(oid){
   const o = ordenById(oid);
   if(!o) return;
   ctxInvoice = { oid };
+  invRuta = [];
   document.getElementById("invProvDesc").textContent = `${o.proveedor} — ${o.item} (${o.proyecto})${o.monto!=null?" · $"+o.monto.toLocaleString("es-AR"):""}`;
   document.getElementById("invBuscar").value = "";
   document.getElementById("invLinkManual").value = o.invoiceLink || "";
   document.getElementById("invActual").innerHTML = o.invoiceLink
     ? `Invoice actual: <a href="${escapeHtml(o.invoiceLink)}" target="_blank" rel="noopener">📎 ${escapeHtml(o.invoiceNombre||"abrir")}</a> <button class="btn-mini" onclick="quitarInvoice()">Quitar vínculo</button>`
     : "";
-  document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Cargando archivos de “${CARPETA_INVOICES_PROV}”…</div>`;
   abrirModal("overlayInvoiceProv");
+  // Arranca en la carpeta del proveedor (y del proyecto) si ya existen con un nombre parecido
   try{
-    invoicesCache = await listarInvoicesProveedor();
+    let items = await listarCarpetaInvoices([]);
+    const provCarpeta = !esADefinir(o) && items.find(x=>x.folder && mismoNombre(x.name, o.proveedor));
+    if(provCarpeta){
+      invRuta = [provCarpeta.name];
+      items = await listarCarpetaInvoices(invRuta);
+      const proyCarpeta = items.find(x=>x.folder && mismoNombre(x.name, o.proyecto));
+      if(proyCarpeta){ invRuta = [provCarpeta.name, proyCarpeta.name]; items = await listarCarpetaInvoices(invRuta); }
+    }
+    invItems = items;
     renderListaInvoices();
   } catch(e){
     console.error(e);
-    invoicesCache = [];
-    const nofound = /404/.test(e.message);
-    document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:#8a5a00;background:#FFF3D6;border-radius:6px;font-size:12.5px;">${nofound
-      ? `La carpeta “${CARPETA_INVOICES_PROV}” todavía no existe en el sitio de Administración. Creala en SharePoint (en la misma raíz que Facturas Cliente y PO) o subí un archivo desde tu PC: se crea sola.`
-      : `No se pudo leer la carpeta (¿tenés acceso al sitio de Administración?). Podés subir un archivo desde tu PC o pegar un link.`}</div>`;
+    invItems = [];
+    mostrarErrorListaInvoices(e);
   }
 }
 
+function mostrarErrorListaInvoices(e){
+  const nofound = /404/.test(e.message);
+  document.getElementById("invRuta").innerHTML = "";
+  document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:#8a5a00;background:#FFF3D6;border-radius:6px;font-size:12.5px;">${nofound
+    ? `La carpeta “${CARPETA_INVOICES_PROV}” todavía no existe en el sitio de Administración. Creala en SharePoint (en la misma raíz que Facturas Cliente y PO) o subí un archivo desde tu PC: se crea sola.`
+    : `No se pudo leer la carpeta (¿tenés acceso al sitio de Administración?). Podés subir un archivo desde tu PC o pegar un link.`}</div>`;
+}
+
+async function irACarpetaInvoices(nivel){
+  // nivel = cantidad de carpetas que se mantienen (0 = raíz)
+  const nueva = invRuta.slice(0, nivel);
+  document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Cargando…</div>`;
+  try{ invItems = await listarCarpetaInvoices(nueva); invRuta = nueva; document.getElementById("invBuscar").value = ""; renderListaInvoices(); }
+  catch(e){ console.error(e); mostrarErrorListaInvoices(e); }
+}
+async function entrarCarpetaInvoices(i){
+  const f = invItems[i]; if(!f || !f.folder) return;
+  const nueva = [...invRuta, f.name];
+  document.getElementById("invLista").innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Cargando…</div>`;
+  try{ invItems = await listarCarpetaInvoices(nueva); invRuta = nueva; document.getElementById("invBuscar").value = ""; renderListaInvoices(); }
+  catch(e){ console.error(e); mostrarErrorListaInvoices(e); }
+}
+
+function destinoSubidaInvoice(o){
+  // Dentro de una carpeta → ahí. En la raíz → Proveedor / Proyecto (se crean solas)
+  if(invRuta.length) return invRuta;
+  const r = [];
+  if(!esADefinir(o) && nombreCarpetaSeguro(o.proveedor)) r.push(nombreCarpetaSeguro(o.proveedor));
+  if(r.length && nombreCarpetaSeguro(o.proyecto)) r.push(nombreCarpetaSeguro(o.proyecto));
+  return r;
+}
+
 function renderListaInvoices(){
+  const o = ordenById(ctxInvoice.oid);
+  // Ruta (migas de pan) clickeable
+  const partes = [`<a href="#" onclick="irACarpetaInvoices(0);return false;">📁 ${escapeHtml(CARPETA_INVOICES_PROV)}</a>`]
+    .concat(invRuta.map((n,k)=>`<a href="#" onclick="irACarpetaInvoices(${k+1});return false;">${escapeHtml(n)}</a>`));
+  document.getElementById("invRuta").innerHTML = partes.join(" › ");
+  const dest = destinoSubidaInvoice(o);
+  document.getElementById("invDestino").textContent = "Subir desde mi PC se guarda en: " + [CARPETA_INVOICES_PROV, ...dest].join(" › ");
+
   const q = document.getElementById("invBuscar").value.trim().toLowerCase();
-  const lista = invoicesCache.map((f,i)=>({f,i})).filter(({f})=>!q || f.name.toLowerCase().includes(q));
+  const lista = invItems.map((f,i)=>({f,i})).filter(({f})=>!q || f.name.toLowerCase().includes(q));
   const cont = document.getElementById("invLista");
-  if(!invoicesCache.length){ cont.innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">La carpeta está vacía.</div>`; return; }
-  if(!lista.length){ cont.innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Ningún archivo coincide con la búsqueda.</div>`; return; }
-  cont.innerHTML = lista.map(({f,i})=>`
+  if(!invItems.length){ cont.innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Esta carpeta está vacía.</div>`; return; }
+  if(!lista.length){ cont.innerHTML = `<div style="padding:14px;color:var(--gris);font-size:12.5px;">Nada coincide con la búsqueda en esta carpeta.</div>`; return; }
+  cont.innerHTML = lista.map(({f,i})=> f.folder ? `
+    <div onclick="entrarCarpetaInvoices(${i})" style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--gris-claro);cursor:pointer;font-size:12.5px;font-weight:600;" onmouseover="this.style.background='#f3f7f9'" onmouseout="this.style.background=''">
+      <span style="flex:1;">📁 ${escapeHtml(f.name)}</span><span style="color:var(--gris);font-weight:400;">abrir ›</span>
+    </div>` : `
     <div onclick="elegirInvoice(${i})" style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--gris-claro);cursor:pointer;font-size:12.5px;" onmouseover="this.style.background='#f3f7f9'" onmouseout="this.style.background=''">
       <span style="flex:1;word-break:break-all;">📄 ${escapeHtml(f.name)}</span>
       <span style="color:var(--gris);white-space:nowrap;">${fmt((f.lastModifiedDateTime||"").slice(0,10))} · ${fmtTamano(f.size)}</span>
@@ -2043,7 +2111,7 @@ async function guardarInvoiceOrden(o, link, nombre){
 }
 
 async function elegirInvoice(i){
-  const f = invoicesCache[i]; if(!f || !ctxInvoice) return;
+  const f = invItems[i]; if(!f || !f.file || !ctxInvoice) return;
   const o = ordenById(ctxInvoice.oid);
   if(await guardarInvoiceOrden(o, f.webUrl, f.name)){
     cerrarModal("overlayInvoiceProv");
@@ -2060,14 +2128,14 @@ async function subirInvoiceDesdePC(input){
   try{
     const siteId = await resolverSiteIdAdmin();
     // conflictBehavior=rename: si ya existe un archivo con ese nombre, no lo pisa
-    const sub = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeURIComponent(CARPETA_INVOICES_PROV)}/${encodeURIComponent(file.name)}:/content?@microsoft.graph.conflictBehavior=rename`, {
+    const sub = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${rutaGraphInvoices(destinoSubidaInvoice(o))}/${encodeURIComponent(file.name)}:/content?@microsoft.graph.conflictBehavior=rename`, {
       method: "PUT",
       headers: { "Content-Type": file.type || "application/octet-stream" },
       body: await file.arrayBuffer(),
     });
     if(await guardarInvoiceOrden(o, sub.webUrl, sub.name)){
       cerrarModal("overlayInvoiceProv");
-      mostrarToast(`✓ Subida a “${CARPETA_INVOICES_PROV}” y vinculada: ${sub.name}`);
+      mostrarToast(`✓ Subida a “${[CARPETA_INVOICES_PROV, ...destinoSubidaInvoice(o)].join(" › ")}” y vinculada: ${sub.name}`);
       renderFacturacionProveedores(); refrescarVistasOrdenes();
     }
   } catch(e){
