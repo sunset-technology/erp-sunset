@@ -1,0 +1,12 @@
+# Nunca publicar (repo público)
+importar_erp.*
+crear_columnas_*
+crear_columna_*
+*.xlsx
+*.xlsm
+*.csv
+*.json
+# Documentación interna para Claude: se versiona en el repo privado, no acá
+CLAUDE.md
+CLAUDE.local.md
+.claude/
