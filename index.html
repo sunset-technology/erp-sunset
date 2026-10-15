@@ -886,6 +886,13 @@ async function actualizarItem(nombreLista, itemId, campos){
 // ---- Carga y transformación de datos: SharePoint → estructuras que usa el render ----
 
 async function cargarDatosERP(){
+  // Listas secundarias: cada una tiene permisos propios en SharePoint y no todos los roles las ven
+  // (ej. Oportunidades_Preventas es del CRM). Si el usuario no tiene acceso, se toman como vacías
+  // en vez de cortar la carga de todo el ERP.
+  const opcional = nombre => obtenerTodosLosItems(nombre).catch(e => {
+    console.warn(`Sin acceso a '${nombre}' (se toma como vacía):`, e.message);
+    return [];
+  });
   const [
     itemsProyectos, itemsHitosFact, itemsHitosProv, itemsProveedores,
     itemsIngenieros, itemsHistorial, itemsAsignaciones, itemsPipeline, itemsOportunidades,
@@ -894,11 +901,11 @@ async function cargarDatosERP(){
     obtenerTodosLosItems("Hitos_Facturacion"),
     obtenerTodosLosItems("Hitos_Pago_Proveedores"),
     obtenerTodosLosItems("Proveedores"),
-    obtenerTodosLosItems("Ingenieros"),
-    obtenerTodosLosItems("Historial_Replanificacion"),
-    obtenerTodosLosItems("Asignaciones_Proyecto"),
-    obtenerTodosLosItems("Reservas_Pipeline"),
-    obtenerTodosLosItems("Oportunidades_Preventas"),
+    opcional("Ingenieros"),
+    opcional("Historial_Replanificacion"),
+    opcional("Asignaciones_Proyecto"),
+    opcional("Reservas_Pipeline"),
+    opcional("Oportunidades_Preventas"),
   ]);
 
   const camposDe = it => it.fields || {};
