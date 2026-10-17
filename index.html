@@ -523,9 +523,10 @@
       <label>Hito</label>
       <input type="text" id="edHitoDesc" />
     </div>
-    <div class="campo-2">
-      <div class="campo"><label>% del proyecto</label><input type="number" id="edHitoPct" step="0.01" min="0" max="100" /></div>
-      <div class="campo"><label>Monto (USD)</label><input type="number" id="edHitoMonto" step="0.01" min="0" /></div>
+    <div class="campo">
+      <label>% del proyecto</label>
+      <input type="number" id="edHitoPct" step="0.01" min="0" max="100" />
+      <div class="hint">El monto del hito se recalcula solo con el nuevo % sobre el valor del proyecto, y Facturación lo ve actualizado.</div>
     </div>
     <div class="hint" id="edHitoSuma"></div>
     <div class="modal-actions">
@@ -1632,7 +1633,15 @@ function hito(pid,hid){
   return {p,h};
 }
 
-// ---- Edición del hito (nombre, % y monto) ----
+// ---- Edición del hito (nombre y %; el monto se recalcula, Proyectos no muestra montos) ----
+// Valor del proyecto derivado de sus hitos: suma de montos ÷ suma de % (sigue siendo válido
+// mientras se van editando los % de a uno, aunque la suma pase transitoriamente de 100).
+function valorProyectoUSD(p){
+  const sumaPct = p.hitos.reduce((s,x)=>s+(Number(x.pct)||0),0);
+  const sumaMonto = p.hitos.reduce((s,x)=>s+(Number(x.montoUSD)||0),0);
+  return sumaPct > 0 && sumaMonto > 0 ? sumaMonto * 100 / sumaPct : null;
+}
+
 function actualizarSumaPctHito(){
   const {p,h} = hito(modalCtx.pid, modalCtx.hid);
   const pctTxt = document.getElementById("edHitoPct").value;
@@ -1650,7 +1659,6 @@ function abrirEditarHito(pid,hid){
   document.getElementById("edHitoMeta").textContent = `${p.nombre} — ${p.cliente}`;
   document.getElementById("edHitoDesc").value = h.desc;
   document.getElementById("edHitoPct").value = h.pct ?? "";
-  document.getElementById("edHitoMonto").value = h.montoUSD ?? "";
   document.getElementById("edHitoPct").oninput = actualizarSumaPctHito;
   actualizarSumaPctHito();
   abrirModal("overlayEditarHito");
@@ -1658,24 +1666,32 @@ function abrirEditarHito(pid,hid){
 
 async function guardarEditarHito(){
   const {pid,hid} = modalCtx;
-  const {h} = hito(pid,hid);
+  const {p,h} = hito(pid,hid);
   const desc = nv("edHitoDesc");
   if(!desc){ mostrarToast("⚠ Ingresá el nombre del hito"); return; }
-  const pctTxt = nv("edHitoPct"), montoTxt = nv("edHitoMonto");
+  const pctTxt = nv("edHitoPct");
   const pct = pctTxt === "" ? 0 : Number(pctTxt);
-  const monto = montoTxt === "" ? 0 : Number(montoTxt);
   if(!isFinite(pct) || pct < 0 || pct > 100){ mostrarToast("⚠ El % tiene que estar entre 0 y 100"); return; }
-  if(!isFinite(monto) || monto < 0){ mostrarToast("⚠ El monto no es válido"); return; }
+  const campos = {
+    "Nro_x002e__x0020_hito_x0020__x00": desc,
+    "_x0025__x0020_del_x0020_proyecto": pct,
+  };
+  let monto = h.montoUSD, avisoMonto = "";
+  if(pct !== Number(h.pct)){
+    const valor = valorProyectoUSD(p);
+    if(valor != null){
+      monto = Math.round(valor * pct) / 100;
+      campos.Monto_x0020_USD = monto;
+    } else {
+      avisoMonto = " (⚠ el monto no se recalculó: el proyecto no tiene montos cargados; avisá a Administración)";
+    }
+  }
   const btn = document.getElementById("btnGuardarHito"); btn.disabled = true;
   try{
-    await actualizarItem("Hitos_Facturacion", h._spId, {
-      "Nro_x002e__x0020_hito_x0020__x00": desc,
-      "_x0025__x0020_del_x0020_proyecto": pct,
-      Monto_x0020_USD: monto,
-    });
+    await actualizarItem("Hitos_Facturacion", h._spId, campos);
     Object.assign(h, { desc, pct, montoUSD: monto });
     cerrarModal("overlayEditarHito");
-    mostrarToast("✓ Hito actualizado");
+    mostrarToast("✓ Hito actualizado" + avisoMonto);
     refrescarTodoTrasEditar();
     refrescarModalProyecto();
   } catch(e){
