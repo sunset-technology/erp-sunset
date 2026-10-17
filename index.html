@@ -515,6 +515,26 @@
   </div>
 </div>
 
+<div class="overlay" id="overlayEditarHito">
+  <div class="modal modal-editar">
+    <h3>Editar hito</h3>
+    <div class="desc" id="edHitoMeta"></div>
+    <div class="campo">
+      <label>Hito</label>
+      <input type="text" id="edHitoDesc" />
+    </div>
+    <div class="campo-2">
+      <div class="campo"><label>% del proyecto</label><input type="number" id="edHitoPct" step="0.01" min="0" max="100" /></div>
+      <div class="campo"><label>Monto (USD)</label><input type="number" id="edHitoMonto" step="0.01" min="0" /></div>
+    </div>
+    <div class="hint" id="edHitoSuma"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secundario" onclick="cerrarModal('overlayEditarHito')">Cancelar</button>
+      <button class="btn btn-primario" id="btnGuardarHito" onclick="guardarEditarHito()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="overlayHistorial">
   <div class="modal">
     <h3>Historial de replanificaciones</h3>
@@ -1519,6 +1539,7 @@ function renderHitoRow(p,h){
     </td>
     <td>
       <div class="acciones-hito">
+        <button class="btn-mini" onclick="event.stopPropagation();abrirEditarHito('${p.id}',${h.id})">Editar</button>
         <button class="btn-mini" onclick="event.stopPropagation();abrirReplanificar('${p.id}',${h.id})">Replanificar</button>
         ${h.historial.length ? `<button class="btn-mini" onclick="event.stopPropagation();abrirHistorial('${p.id}',${h.id})">Historial (${h.historial.length})</button>` : ""}
       </div>
@@ -1609,6 +1630,57 @@ function hito(pid,hid){
   const p = proyectos.find(x=>x.id===pid);
   const h = p.hitos.find(x=>x.id===hid);
   return {p,h};
+}
+
+// ---- Edición del hito (nombre, % y monto) ----
+function actualizarSumaPctHito(){
+  const {p,h} = hito(modalCtx.pid, modalCtx.hid);
+  const pctTxt = document.getElementById("edHitoPct").value;
+  const pct = pctTxt === "" ? 0 : Number(pctTxt);
+  const suma = p.hitos.reduce((s,x)=>s+(x===h ? pct : Number(x.pct)||0),0);
+  const sumaR = Math.round(suma*100)/100;
+  const el = document.getElementById("edHitoSuma");
+  el.textContent = `Suma de % de los hitos del proyecto: ${sumaR}%` + (sumaR===100 ? " ✓" : " — ojo, no da 100%");
+  el.style.color = sumaR===100 ? "var(--ok)" : "var(--danger)";
+}
+
+function abrirEditarHito(pid,hid){
+  const {p,h} = hito(pid,hid);
+  modalCtx = {pid,hid};
+  document.getElementById("edHitoMeta").textContent = `${p.nombre} — ${p.cliente}`;
+  document.getElementById("edHitoDesc").value = h.desc;
+  document.getElementById("edHitoPct").value = h.pct ?? "";
+  document.getElementById("edHitoMonto").value = h.montoUSD ?? "";
+  document.getElementById("edHitoPct").oninput = actualizarSumaPctHito;
+  actualizarSumaPctHito();
+  abrirModal("overlayEditarHito");
+}
+
+async function guardarEditarHito(){
+  const {pid,hid} = modalCtx;
+  const {h} = hito(pid,hid);
+  const desc = nv("edHitoDesc");
+  if(!desc){ mostrarToast("⚠ Ingresá el nombre del hito"); return; }
+  const pctTxt = nv("edHitoPct"), montoTxt = nv("edHitoMonto");
+  const pct = pctTxt === "" ? 0 : Number(pctTxt);
+  const monto = montoTxt === "" ? 0 : Number(montoTxt);
+  if(!isFinite(pct) || pct < 0 || pct > 100){ mostrarToast("⚠ El % tiene que estar entre 0 y 100"); return; }
+  if(!isFinite(monto) || monto < 0){ mostrarToast("⚠ El monto no es válido"); return; }
+  const btn = document.getElementById("btnGuardarHito"); btn.disabled = true;
+  try{
+    await actualizarItem("Hitos_Facturacion", h._spId, {
+      "Nro_x002e__x0020_hito_x0020__x00": desc,
+      "_x0025__x0020_del_x0020_proyecto": pct,
+      Monto_x0020_USD: monto,
+    });
+    Object.assign(h, { desc, pct, montoUSD: monto });
+    cerrarModal("overlayEditarHito");
+    mostrarToast("✓ Hito actualizado");
+    refrescarTodoTrasEditar();
+    refrescarModalProyecto();
+  } catch(e){
+    console.error(e); mostrarToast("⚠ No se pudo guardar en SharePoint — revisá la consola");
+  } finally { btn.disabled = false; }
 }
 
 function abrirReplanificar(pid,hid){
