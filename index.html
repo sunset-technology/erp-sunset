@@ -425,7 +425,8 @@
     </div>
     <div class="kpis-proyecto" id="proyModalKpis" style="margin:16px 0 4px;"></div>
     <div class="panel-modal">
-      <h4>Cobro a Clientes</h4>
+      <h4 style="display:flex;justify-content:space-between;align-items:center;">Cobro a Clientes
+        <button class="btn-mini" onclick="abrirNuevoHito(proyectoModalId)">+ Agregar hito</button></h4>
       <div style="overflow-x:auto;" id="proyModalTablaWrap"></div>
     </div>
     <div class="panel-modal">
@@ -517,11 +518,21 @@
 
 <div class="overlay" id="overlayEditarHito">
   <div class="modal modal-editar">
-    <h3>Editar hito</h3>
+    <h3 id="edHitoTitulo">Editar hito</h3>
     <div class="desc" id="edHitoMeta"></div>
     <div class="campo">
       <label>Hito</label>
-      <input type="text" id="edHitoDesc" />
+      <input type="text" id="edHitoDesc" placeholder="Ej: Hito 4 - Puesta en producción" />
+    </div>
+    <div id="edHitoNuevoCampos">
+      <div class="campo">
+        <label>Tipo</label>
+        <select id="edHitoTipo"></select>
+      </div>
+      <div class="campo-2">
+        <div class="campo"><label>Fecha Facturación</label><input type="date" id="edHitoFact" /></div>
+        <div class="campo"><label>Fecha Cobro</label><input type="date" id="edHitoCobro" /></div>
+      </div>
     </div>
     <div class="campo">
       <label>% del proyecto</label>
@@ -1646,7 +1657,8 @@ function actualizarSumaPctHito(){
   const {p,h} = hito(modalCtx.pid, modalCtx.hid);
   const pctTxt = document.getElementById("edHitoPct").value;
   const pct = pctTxt === "" ? 0 : Number(pctTxt);
-  const suma = p.hitos.reduce((s,x)=>s+(x===h ? pct : Number(x.pct)||0),0);
+  // En alta (h indefinido) el % nuevo se suma a los existentes
+  const suma = p.hitos.reduce((s,x)=>s+(x===h ? pct : Number(x.pct)||0), h ? 0 : pct);
   const sumaR = Math.round(suma*100)/100;
   const el = document.getElementById("edHitoSuma");
   el.textContent = `Suma de % de los hitos del proyecto: ${sumaR}%` + (sumaR===100 ? " ✓" : " — ojo, no da 100%");
@@ -1656,12 +1668,69 @@ function actualizarSumaPctHito(){
 function abrirEditarHito(pid,hid){
   const {p,h} = hito(pid,hid);
   modalCtx = {pid,hid};
+  document.getElementById("edHitoTitulo").textContent = "Editar hito";
+  document.getElementById("edHitoNuevoCampos").style.display = "none";
   document.getElementById("edHitoMeta").textContent = `${p.nombre} — ${p.cliente}`;
   document.getElementById("edHitoDesc").value = h.desc;
   document.getElementById("edHitoPct").value = h.pct ?? "";
   document.getElementById("edHitoPct").oninput = actualizarSumaPctHito;
   actualizarSumaPctHito();
   abrirModal("overlayEditarHito");
+}
+
+// Alta: mismo modal, con tipo y fechas. hid null = hito nuevo
+function abrirNuevoHito(pid){
+  const p = proyectos.find(x=>x.id===pid);
+  modalCtx = {pid, hid:null};
+  document.getElementById("edHitoTitulo").textContent = "Agregar hito";
+  document.getElementById("edHitoNuevoCampos").style.display = "";
+  document.getElementById("edHitoMeta").textContent = `${p.nombre} — ${p.cliente}`;
+  document.getElementById("edHitoDesc").value = "";
+  document.getElementById("edHitoTipo").innerHTML = TIPOS_HITO.map(t=>`<option value="${t}">${t}</option>`).join("");
+  document.getElementById("edHitoFact").value = "";
+  document.getElementById("edHitoCobro").value = "";
+  document.getElementById("edHitoPct").value = "";
+  document.getElementById("edHitoPct").oninput = actualizarSumaPctHito;
+  actualizarSumaPctHito();
+  abrirModal("overlayEditarHito");
+}
+
+async function guardarNuevoHito(p, desc, pct){
+  const tipo = document.getElementById("edHitoTipo").value;
+  const fact = document.getElementById("edHitoFact").value;
+  const cobro = document.getElementById("edHitoCobro").value;
+  if(!fact || !cobro){ mostrarToast("⚠ Ingresá las fechas de facturación y cobro"); return; }
+  if(cobro < fact){ mostrarToast("⚠ La fecha de cobro no puede ser anterior a la de facturación"); return; }
+  const valor = valorProyectoUSD(p);
+  const monto = valor != null ? Math.round(valor * pct) / 100 : 0;
+  const btn = document.getElementById("btnGuardarHito"); btn.disabled = true;
+  try{
+    // Al nacer, el plan comercial (CANS) y el vigente coinciden
+    const r = await crearItem("Hitos_Facturacion", {
+      Title: `${p.nombre} — ${desc}`.slice(0,250),
+      ProyectoLookupId: p._spId,
+      "Nro_x002e__x0020_hito_x0020__x00": desc,
+      Tipo_x0020_de_x0020_hito: tipo,
+      "_x0025__x0020_del_x0020_proyecto": pct,
+      Monto_x0020_USD: monto,
+      Fecha_x0020_Plan_x0020_Comercial: fact,
+      Fecha_x0020_Plan_x0020_Comercial0: cobro,
+      Fecha_x0020_Plan_x0020_Vigente_x: fact,
+      Fecha_x0020_Plan_x0020_Vigente_x0: cobro,
+    });
+    const spId = Number(r.id);
+    p.hitos.push({
+      id: spId, _spId: spId, desc, tipo, pct, montoUSD: monto, hitoCumplido: false,
+      comFact: fact, comCobro: cobro, fact, cobro,
+      facturaEnviada: false, facturaNumero: "", facturaCobrada: false, notasEstado: "", historial: [],
+    });
+    cerrarModal("overlayEditarHito");
+    mostrarToast("✓ Hito agregado" + (valor == null ? " (⚠ sin monto: el proyecto no tiene montos cargados; avisá a Administración)" : ""));
+    refrescarTodoTrasEditar();
+    refrescarModalProyecto();
+  } catch(e){
+    console.error(e); mostrarToast("⚠ No se pudo guardar en SharePoint — revisá la consola");
+  } finally { btn.disabled = false; }
 }
 
 async function guardarEditarHito(){
@@ -1672,6 +1741,7 @@ async function guardarEditarHito(){
   const pctTxt = nv("edHitoPct");
   const pct = pctTxt === "" ? 0 : Number(pctTxt);
   if(!isFinite(pct) || pct < 0 || pct > 100){ mostrarToast("⚠ El % tiene que estar entre 0 y 100"); return; }
+  if(!h) return guardarNuevoHito(p, desc, pct);
   const campos = {
     "Nro_x002e__x0020_hito_x0020__x00": desc,
     "_x0025__x0020_del_x0020_proyecto": pct,
