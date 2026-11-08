@@ -2106,6 +2106,7 @@ function renderFacturacionProveedores(){
               <td>
                 <span style="font-size:12px;">${escapeHtml(o.poNumero||"—")}</span>
                 <button class="substat-btn" style="padding:3px 7px;font-size:11px;margin-left:4px;" onclick="abrirGenerarPO(${o.id})" title="Generar orden de compra en PDF">📄 PDF</button>
+                ${o.poNumero?`<button class="btn-mini" style="margin-left:4px;" onclick="anularPO(${o.id})" title="Anular el N° de PO (si se generó por error)">↩ Anular</button>`:""}
               </td>
               <td><input type="text" value="${escapeHtml(o.facturaProveedor||"")}" placeholder="N° / referencia" style="width:100px;font-size:12px;" onchange="marcarCampoOrden(${o.id},'facturaProveedor',this.value)" />
                 <div style="margin-top:4px;">${o.invoiceLink?`<a href="${urlSegura(o.invoiceLink)}" target="_blank" rel="noopener" title="${escapeHtml(o.invoiceNombre||"Abrir invoice")}" style="font-size:11.5px;">📎 ${escapeHtml((o.invoiceNombre||"Invoice").slice(0,22))}${(o.invoiceNombre||"").length>22?"…":""}</a> `:""}<button class="btn-mini" onclick="abrirVincularInvoice(${o.id})" title="Elegir la invoice del proveedor desde la carpeta ${CARPETA_INVOICES_PROV}">${o.invoiceLink?"Cambiar":"📎 Vincular invoice"}</button></div></td>
@@ -2428,6 +2429,36 @@ function confirmarGenerarDocumento(){
     renderFacturacionProveedores();
   }
   cerrarModal("overlayGenerarDoc");
+}
+
+// Anular una PO generada por error: vacía NumeroPO (y "PO enviada") en Hitos_Pago_Proveedores.
+// El número vuelve a quedar libre para la numeración sugerida. El PDF de la carpeta PO se borra a mano.
+async function anularPO(oid){
+  const o = ordenById(oid);
+  if(!o || !o.poNumero) return;
+  const msg = `¿Anular la PO ${o.poNumero} de ${o.proveedor}?
+
+`
+    + `• Se borra el N° de PO del hito${o.poEnviada ? " y se destilda \"PO enviada\"" : ""}.
+`
+    + `• El número queda libre para la próxima PO de la filial.
+`
+    + `• El PDF NO se borra: eliminalo a mano de Administración → Facturación → ${CARPETA_PO}.`;
+  if(!confirm(msg)) return;
+  const anterior = { poNumero: o.poNumero, poEnviada: o.poEnviada };
+  const campos = { NumeroPO: "" };
+  if(o.poEnviada) campos.PO_x0020_enviada = false;
+  try{
+    await actualizarItem("Hitos_Pago_Proveedores", o._spId, campos);
+    o.poNumero = "";
+    o.poEnviada = false;
+    mostrarToast(`✓ PO ${anterior.poNumero} anulada — acordate de borrar el PDF de la carpeta ${CARPETA_PO}`);
+  } catch(e){
+    console.error(e);
+    Object.assign(o, anterior);
+    mostrarToast("⚠ No se pudo anular la PO en SharePoint — reintentá o avisá a Preventas");
+  }
+  renderFacturacionProveedores();
 }
 
 function _formatoMoneda(monto, filial){
