@@ -874,6 +874,26 @@ async function subirArchivoAdmin(carpeta, nombreArchivo, arrayBuffer){
   });
 }
 
+// Manda a la papelera de reciclaje de SharePoint los PDFs de la carpeta cuyo nombre empiece con
+// "<numero con / → -> - " (formato con el que los generan generarPDFFactura / generarPDFPO).
+// Se busca por número y no por el nombre completo, por si después se editó cliente/proveedor/ítem.
+// Devuelve la cantidad de archivos enviados a la papelera.
+async function papelearPDFsDocumento(carpeta, numero){
+  const siteId = await resolverSiteIdAdmin();
+  const prefijo = `${numero.replace("/","-")} - `.toLowerCase();
+  let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${encodeURIComponent(carpeta)}:/children?$select=id,name,file&$top=999`;
+  const encontrados = [];
+  while(url){
+    const data = await graphFetch(url);
+    (data.value || []).forEach(it=>{ if(it.file && it.name.toLowerCase().startsWith(prefijo)) encontrados.push(it); });
+    url = data["@odata.nextLink"] || null;
+  }
+  for(const it of encontrados){
+    await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive/items/${it.id}`, { method: "DELETE" });
+  }
+  return encontrados.length;
+}
+
 async function resolverListaId(nombre){
   if(listIdCache[nombre]) return listIdCache[nombre];
   const siteId = await resolverSiteId();
@@ -1984,6 +2004,7 @@ function renderFacturacionClientes(){
               <td>
                 <input type="text" value="${escapeHtml(h.facturaNumero||"")}" placeholder="N° / referencia" style="width:90px;font-size:12px;" onchange="marcarCampoHito('${p.id}',${h.id},'facturaNumero',this.value)" />
                 <button class="substat-btn" style="padding:3px 7px;font-size:11px;margin-left:4px;" onclick="abrirGenerarFactura('${p.id}',${h.id})" title="Generar factura (proforma) en PDF">📄 PDF</button>
+                ${h.facturaNumero?`<button class="btn-mini" style="margin-left:4px;" onclick="anularFactura('${p.id}',${h.id})" title="Anular la factura (si se generó por error)">↩ Anular</button>`:""}
               </td>
               <td>${fmt(h.cobro)}</td>
               <td style="text-align:center;">
@@ -2431,34 +2452,72 @@ function confirmarGenerarDocumento(){
   cerrarModal("overlayGenerarDoc");
 }
 
-// Anular una PO generada por error: vacía NumeroPO (y "PO enviada") en Hitos_Pago_Proveedores.
-// El número vuelve a quedar libre para la numeración sugerida. El PDF de la carpeta PO se borra a mano.
-async function anularPO(oid){
-  const o = ordenById(oid);
-  if(!o || !o.poNumero) return;
-  const msg = `¿Anular la PO ${o.poNumero} de ${o.proveedor}?
+// Anular documentos generados por error (factura a cliente / PO a proveedor).
+// Vacía el N° (y el tilde de "enviada") en la lista, libera el número para la numeración sugerida
+// y manda el PDF de la carpeta de Administración a la papelera de reciclaje (se puede recuperar de ahí).
+async function _anularDocumento({ tipo, numero, carpeta, aQuien, enviada, guardar, aplicar, revertir, render }){
+  const msg = `¿Anular la ${tipo} ${numero} de ${aQuien}?
 
 `
-    + `• Se borra el N° de PO del hito${o.poEnviada ? " y se destilda \"PO enviada\"" : ""}.
+    + `• Se borra el N° de ${tipo} del hito${enviada ? ` y se destilda "${tipo} enviada"` : ""}.
 `
-    + `• El número queda libre para la próxima PO de la filial.
+    + `• El número queda libre para la próxima ${tipo} de la filial.
 `
-    + `• El PDF NO se borra: eliminalo a mano de Administración → Facturación → ${CARPETA_PO}.`;
+    + `• El PDF se manda a la papelera de reciclaje de Administración → Facturación → ${carpeta}.`;
   if(!confirm(msg)) return;
+  const Tipo = tipo.charAt(0).toUpperCase() + tipo.slice(1);
+  try{
+    await guardar();
+    aplicar();
+  } catch(e){
+    console.error(e);
+    revertir();
+    mostrarToast(`⚠ No se pudo anular la ${tipo} en SharePoint — reintentá o avisá a Preventas`);
+    render();
+    return;
+  }
+  render();
+  try{
+    const n = await papelearPDFsDocumento(carpeta, numero);
+    mostrarToast(n
+      ? `✓ ${Tipo} ${numero} anulada — PDF enviado a la papelera de reciclaje de ${carpeta}`
+      : `✓ ${Tipo} ${numero} anulada — no se encontró su PDF en ${carpeta}`);
+  } catch(e){
+    console.error(e);
+    mostrarToast(`✓ ${Tipo} ${numero} anulada, pero no se pudo borrar el PDF — eliminalo a mano de ${carpeta}`);
+  }
+}
+
+function anularPO(oid){
+  const o = ordenById(oid);
+  if(!o || !o.poNumero) return;
+  if(o.facturaPagada){ mostrarToast("⚠ Este pago figura como pagado: destildá \"Factura pagada\" antes de anular la PO"); return; }
   const anterior = { poNumero: o.poNumero, poEnviada: o.poEnviada };
   const campos = { NumeroPO: "" };
   if(o.poEnviada) campos.PO_x0020_enviada = false;
-  try{
-    await actualizarItem("Hitos_Pago_Proveedores", o._spId, campos);
-    o.poNumero = "";
-    o.poEnviada = false;
-    mostrarToast(`✓ PO ${anterior.poNumero} anulada — acordate de borrar el PDF de la carpeta ${CARPETA_PO}`);
-  } catch(e){
-    console.error(e);
-    Object.assign(o, anterior);
-    mostrarToast("⚠ No se pudo anular la PO en SharePoint — reintentá o avisá a Preventas");
-  }
-  renderFacturacionProveedores();
+  return _anularDocumento({
+    tipo: "PO", numero: o.poNumero, carpeta: CARPETA_PO, aQuien: o.proveedor, enviada: o.poEnviada,
+    guardar: ()=> actualizarItem("Hitos_Pago_Proveedores", o._spId, campos),
+    aplicar: ()=>{ o.poNumero = ""; o.poEnviada = false; },
+    revertir: ()=> Object.assign(o, anterior),
+    render: renderFacturacionProveedores,
+  });
+}
+
+function anularFactura(pid, hid){
+  const {p,h} = hito(pid, hid);
+  if(!h || !h.facturaNumero) return;
+  if(h.facturaCobrada){ mostrarToast("⚠ Esta factura figura cobrada: destildá \"Factura cobrada\" antes de anularla"); return; }
+  const anterior = { facturaNumero: h.facturaNumero, facturaEnviada: h.facturaEnviada };
+  const campos = { N_x00b0__x0020_de_x0020_factura: "" };
+  if(h.facturaEnviada) campos.Factura_x0020_enviada = false;
+  return _anularDocumento({
+    tipo: "factura", numero: h.facturaNumero, carpeta: CARPETA_FACTURAS_CLIENTE, aQuien: p.cliente, enviada: h.facturaEnviada,
+    guardar: ()=> actualizarItem("Hitos_Facturacion", h._spId, campos),
+    aplicar: ()=>{ h.facturaNumero = ""; h.facturaEnviada = false; },
+    revertir: ()=> Object.assign(h, anterior),
+    render: ()=>{ renderFacturacionClientes(); actualizarBadgeVencidos(); if(proyectoModalId===pid) refrescarModalProyecto(); },
+  });
 }
 
 function _formatoMoneda(monto, filial){
