@@ -883,11 +883,55 @@ async function graphFetch(url, opciones = {}){
   return res.json();
 }
 
+// Se guarda la promesa (no solo el resultado): si varias listas se cargan a la vez, el sitio se consulta una sola vez.
+let siteIdPromesa = null;
 async function resolverSiteId(){
   if(siteIdCache) return siteIdCache;
-  const data = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${SITE_PATH}`);
-  siteIdCache = data.id;
-  return siteIdCache;
+  siteIdPromesa = siteIdPromesa || graphFetch(`https://graph.microsoft.com/v1.0/sites/${SITE_PATH}?$select=id`)
+    .then(d => (siteIdCache = d.id))
+    .catch(e => { siteIdPromesa = null; throw e; });
+  return siteIdPromesa;
+}
+
+// Todos los IDs de listas de VENTAS en una sola consulta (en vez de una por lista). Las que el usuario no ve no aparecen.
+let listasVentasPromesa = null;
+function resolverListasVentas(){
+  listasVentasPromesa = listasVentasPromesa || (async () => {
+    const siteId = await resolverSiteId();
+    let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists?$select=id,displayName&$top=999`;
+    while(url){
+      const d = await graphFetch(url);
+      (d.value || []).forEach(l => { listIdCache[l.displayName] = l.id; });
+      url = d["@odata.nextLink"] || null;
+    }
+  })().catch(e => { listasVentasPromesa = null; throw e; });
+  return listasVentasPromesa;
+}
+
+// GET de varias URLs (relativas a /v1.0) en un solo $batch, siguiendo el paginado de cada una.
+// Devuelve, en el mismo orden, { value: [...] } o { error }. Graph tarda lo mismo en 1 llamada con 9 pedidos que en 1 suelta.
+async function graphGetVarios(urls){
+  const out = [];
+  for(let i = 0; i < urls.length; i += 20){
+    const chunk = urls.slice(i, i + 20);
+    const res = await graphFetch("https://graph.microsoft.com/v1.0/$batch", { method: "POST",
+      body: JSON.stringify({ requests: chunk.map((u, k) => ({ id: String(k), method: "GET", url: u })) }) });
+    const porId = Object.fromEntries((res.responses || []).map(r => [r.id, r]));
+    for(let k = 0; k < chunk.length; k++){
+      const r = porId[String(k)], url = chunk[k];
+      try{
+        let body;
+        if(r && r.status < 300) body = r.body;
+        else if(!r || [429, 503, 504].includes(r.status)) body = await graphFetch("https://graph.microsoft.com/v1.0" + url); // reintento suelto
+        else throw new Error(`Graph GET ${url} → ${r.status}: ${JSON.stringify(r.body || "").slice(0, 300)}`);
+        const value = [...(body.value || [])];
+        let next = body["@odata.nextLink"];
+        while(next){ const d = await graphFetch(next); value.push(...(d.value || [])); next = d["@odata.nextLink"]; }
+        out.push({ value });
+      } catch(e){ out.push({ error: e }); }
+    }
+  }
+  return out;
 }
 
 // ---- Sitio ADMINISTRACION-Facturacion (carpetas Facturas Cliente / PO / Facturas Proveedores) ----
@@ -981,24 +1025,26 @@ async function cargarDatosERP(){
   // Listas secundarias: cada una tiene permisos propios en SharePoint y no todos los roles las ven
   // (ej. Oportunidades_Preventas es del CRM). Si el usuario no tiene acceso, se toman como vacías
   // en vez de cortar la carga de todo el ERP.
-  const opcional = nombre => obtenerTodosLosItems(nombre).catch(e => {
-    console.warn(`Sin acceso a '${nombre}' (se toma como vacía):`, e.message);
-    return [];
-  });
+  // Las 9 listas van en un solo $batch (antes: 27 llamadas; con Graph lento la carga tardaba más de un minuto).
+  const OBLIGATORIAS = ["Proyectos_ERP", "Hitos_Facturacion", "Hitos_Pago_Proveedores", "Proveedores"];
+  const OPCIONALES = ["Ingenieros", "Historial_Replanificacion", "Asignaciones_Proyecto", "Reservas_Pipeline", "Oportunidades_Preventas"];
+  const NOMBRES = [...OBLIGATORIAS, ...OPCIONALES];
+  const siteId = await resolverSiteId();
+  await resolverListasVentas();
+  const conId = NOMBRES.filter(n => listIdCache[n]);
+  const resultados = await graphGetVarios(conId.map(n => `/sites/${siteId}/lists/${listIdCache[n]}/items?$expand=fields&$top=999`));
+  const itemsDe = {};
+  conId.forEach((n, i) => { itemsDe[n] = resultados[i]; });
   const [
     itemsProyectos, itemsHitosFact, itemsHitosProv, itemsProveedores,
     itemsIngenieros, itemsHistorial, itemsAsignaciones, itemsPipeline, itemsOportunidades,
-  ] = await Promise.all([
-    obtenerTodosLosItems("Proyectos_ERP"),
-    obtenerTodosLosItems("Hitos_Facturacion"),
-    obtenerTodosLosItems("Hitos_Pago_Proveedores"),
-    obtenerTodosLosItems("Proveedores"),
-    opcional("Ingenieros"),
-    opcional("Historial_Replanificacion"),
-    opcional("Asignaciones_Proyecto"),
-    opcional("Reservas_Pipeline"),
-    opcional("Oportunidades_Preventas"),
-  ]);
+  ] = NOMBRES.map(n => {
+    const r = itemsDe[n] || { error: new Error(`No se encontró la lista '${n}' en el sitio VENTAS.`) };
+    if(!r.error) return r.value;
+    if(OBLIGATORIAS.includes(n)) throw r.error;
+    console.warn(`Sin acceso a '${n}' (se toma como vacía):`, r.error.message);
+    return [];
+  });
 
   const camposDe = it => it.fields || {};
   const num = v => (v==null || v==="") ? null : Number(v); // Graph devuelve los IDs de lookup como texto
@@ -3935,7 +3981,7 @@ const CC_MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","N
 const CC_CAMPOS = {
   personas: ["Title","Email","Rol","Area","Filial","MonedaSueldo","FechaAlta","FechaBaja","HorasMes","Notas"],
   escenarios: ["Title","Anio","Tipo","Version","Estado","Vigente","BasadoEnLookupId","MesDesde","MesHasta","FechaAprobacion","AprobadoPor",
-    "FacturacionUSD","VentaAdjudicadaUSD","HorasCargadas","Ocupacion","TC_ARS","TC_EUR","CargasSocialesPct","SACPct","AjusteSalarialPct","Notas"],
+    "FacturacionUSD","VentaAdjudicadaUSD","HorasCargadas","Ocupacion","TC_ARS","TC_EUR","CargasSocialesPct","SACPct","AjusteSalarialPct","MargenBrutoPct","DeduccionesPct","EbitdaObjetivoPct","Notas"],
   movimientos: ["Title","EscenarioLookupId","Anio","Mes","Categoria","Concepto","PersonaLookupId","Filial","Moneda","Monto","TipoCambio",
     "MontoUSD","Origen","Fuente","Notas"],
   parametros: ["Title","Anio","TipoDato","EscenarioOrigen","EstructuraTotalUSD","NominaDirectaUSD","EstructuraSinDirectaUSD","FacturacionUSD",
@@ -3952,11 +3998,9 @@ const cc = {
 };
 
 // ---- Acceso a Graph ----
-async function ccSiteId(sitio){
-  if(!ccSiteIdCache[sitio]){
-    const d = await graphFetch(`${GRAPH_V1}/sites/${CC_SITIOS[sitio]}?$select=id`);
-    ccSiteIdCache[sitio] = d.id;
-  }
+function ccSiteId(sitio){ // se cachea la promesa: con varias listas a la vez, el sitio se consulta una sola vez
+  ccSiteIdCache[sitio] = ccSiteIdCache[sitio] || graphFetch(`${GRAPH_V1}/sites/${CC_SITIOS[sitio]}?$select=id`)
+    .then(d => d.id).catch(e => { delete ccSiteIdCache[sitio]; throw e; });
   return ccSiteIdCache[sitio];
 }
 async function ccRutaLista(lista){
@@ -4113,12 +4157,15 @@ function ccAsegurarSeleccion(){
 }
 
 // ---- Carga y render general ----
-async function ccCargar(){
-  const [escenarios, personas, movimientos, parametros] = await Promise.all([
-    ccListar("escenarios"), ccListar("personas"), ccListar("movimientos"),
-    ccListar("parametros").catch(e => { console.warn("CC_Parametros (sitio ACP) no accesible:", e); return null; }),
-  ]);
-  Object.assign(cc, { escenarios, personas, movimientos, parametros, cargado: true });
+async function ccCargar(){ // las 4 listas en un solo $batch
+  const listas = ["escenarios", "personas", "movimientos", "parametros"];
+  const rutas = await Promise.all(listas.map(ccRutaLista));
+  const res = await graphGetVarios(listas.map((l, i) => `${rutas[i]}/items?$top=999&$expand=fields($select=${CC_CAMPOS[l].join(",")})`));
+  const filas = r => r.value.map(it => ({ ...it.fields, id: String(it.id) }));
+  res.slice(0, 3).forEach(r => { if(r.error) throw r.error; });
+  if(res[3].error) console.warn("CC_Parametros (sitio ACP) no accesible:", res[3].error);
+  Object.assign(cc, { escenarios: filas(res[0]), personas: filas(res[1]), movimientos: filas(res[2]),
+    parametros: res[3].error ? null : filas(res[3]), cargado: true });
 }
 async function abrirCentroCostos(){
   if(!cc.cargado){
@@ -4182,6 +4229,7 @@ function ccHtmlResumen(){
     ${tc ? tile((delta > 0 ? "+" : "") + usdA(delta), "Δ vs " + escapeHtml(comp.Title), tc.total ? ccPct(delta / tc.total) : "", delta > 0.5 ? "var(--danger)" : "var(--ok)")
          : tile("—", "Sin comparación", e.Tipo === "Real" ? "no hay presupuesto vigente para este año" : "")}
   </div>`;
+  h += ccHtmlFacturacion(e, t, comp, tc);
   const cats = [...CC_CATEGORIAS, ...Object.keys(t.porCat), ...(tc ? Object.keys(tc.porCat) : [])]
     .filter((c, i, a) => a.indexOf(c) === i && (t.porCat[c] || (tc && tc.porCat[c])));
   const celda = v => `<td class="n">${v ? usdA(v) : '<span style="color:var(--gris)">—</span>'}</td>`;
@@ -4201,6 +4249,169 @@ function ccHtmlResumen(){
     ${tc ? `<th class="n">${escapeHtml(comp.Title)}</th><th class="n">Δ</th>` : ""}</tr></thead><tbody>${filas}</tbody></table></div>
     <div class="motivo-chip" style="max-width:none;margin-top:10px;">Montos devengados en USD (Monto USD de cada movimiento). Δ positivo = gasto por encima de la comparación.</div></div>`;
   return h;
+}
+
+// ---- Facturación necesaria (cascada como el Excel del centro de costos) ----
+// Ganancia bruta = Facturación × Margen bruto · Ganancia neta = Bruta × (1 − Deducciones) · EBITDA = Neta − Estructura total.
+// Mínimo para cubrir costos (EBITDA 0): Estructura ÷ (MB × (1 − D)). Mínimo con ganancia: EBITDA = objetivo % de la facturación
+// → Estructura ÷ (MB × (1 − D) − objetivo). Los supuestos son del escenario; si el escenario no los tiene, se usan los del
+// escenario de comparación o del presupuesto vigente del año.
+const CC_COL = { erp: "#2a78d6", minimo: "#eb6834", objetivo: "#1baf7a" }; // validados con validate_palette.js (light)
+function ccSupuestos(e, comp){
+  const de = x => x && ccN(x.MargenBrutoPct) != null
+    ? { mb: ccN(x.MargenBrutoPct), d: ccN(x.DeduccionesPct) ?? 0, obj: ccN(x.EbitdaObjetivoPct) ?? 0, fuente: x } : null;
+  const vig = cc.escenarios.find(x => ccN(x.Anio) === ccN(e.Anio) && ccEsPresupuesto(x) && x.Vigente);
+  return de(e) || de(comp) || de(vig) || null;
+}
+function ccCascada(F, E, s){
+  if(F == null) return null;
+  const bruta = F * s.mb, neta = bruta * (1 - s.d), ebitda = neta - E, k = s.mb * (1 - s.d);
+  return { F, bruta, neta, E, ebitda, pct: F ? ebitda / F : null, minimo: k > 0 ? E / k : null }; // minimo: con la estructura de esta columna
+}
+function ccMinimos(E, s){
+  const k = s.mb * (1 - s.d);
+  return { k, minimo: k > 0 ? E / k : null, objetivo: k - s.obj > 0 ? E / (k - s.obj) : null };
+}
+// Facturación del ERP (hitos de Proyectos_ERP) por mes del año, por fecha plan vigente (o comercial si falta).
+function ccFacturacionERP(anio){
+  const r = { enviada: {}, pendiente: {}, totEnv: 0, totPend: 0, sinFecha: 0, nSinFecha: 0, hayDatos: false };
+  const lista = [...(typeof proyectos !== "undefined" ? proyectos : []), ...(typeof proyectosArchivo !== "undefined" ? proyectosArchivo : [])];
+  lista.forEach(p => (p.hitos || []).forEach(h => {
+    r.hayDatos = true;
+    const f = h.fact || h.comFact, u = Number(h.montoUSD) || 0;
+    if(!f){ r.sinFecha += u; r.nSinFecha++; return; }
+    if(Number(f.slice(0, 4)) !== anio) return;
+    const m = Number(f.slice(5, 7)), k = h.facturaEnviada ? "enviada" : "pendiente";
+    r[k][m] = (r[k][m] || 0) + u;
+    if(h.facturaEnviada) r.totEnv += u; else r.totPend += u;
+  }));
+  return r;
+}
+function ccHtmlFacturacion(e, t, comp, tc){
+  const s = ccSupuestos(e, comp), anio = ccN(e.Anio), meses = ccMesesDe(e);
+  const btn = ccPuedeEditar !== false ? `<button class="btn-mini" onclick="ccModalSupuestos('${escapeHtml(e.id)}')">⚙ Supuestos de facturación</button>` : "";
+  let h = `<div class="panel"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;"><h3 style="margin:0;">Facturación necesaria — ${escapeHtml(e.Title)}</h3><span style="margin-left:auto;">${btn}</span></div>`;
+  if(!s) return h + `<div style="font-size:13px;color:var(--gris);line-height:1.6;">Faltan los supuestos para calcular la facturación mínima: <strong>margen bruto</strong> (qué queda de cada dólar facturado después de proveedores y licencias), <strong>deducciones</strong> (de ganancia bruta a neta) y <strong>EBITDA objetivo</strong>. Se cargan una vez por escenario con “⚙ Supuestos de facturación”.<br>Mientras tanto, el piso absoluto es la estructura total: ${usdA(t.total)} (${usdA(t.total / meses.length)} por mes).</div></div>`;
+  const E = t.total, mn = ccMinimos(E, s), erp = ccFacturacionERP(anio), Ferp = erp.totEnv + erp.totPend;
+  const tile = (num, lbl, sub, color) => `<div class="stat-tile"><div class="num" ${color ? `style="color:${color}"` : ""}>${num}</div><div class="lbl">${lbl}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+  const hoyM = new Date().getFullYear() === anio ? new Date().getMonth() + 1 : (anio < new Date().getFullYear() ? 12 : 0);
+  const acum = (obj, hasta) => meses.filter(m => m <= hasta).reduce((a, m) => a + (obj[m] || 0), 0);
+  const minHoy = mn.minimo != null ? acum(t.porMes, hoyM) / mn.k : null, factHoy = acum(erp.enviada, hoyM);
+  h += `<div class="grid-stats" style="margin-bottom:14px;">
+    ${tile(usdA(E), "Costo total del año", `${usdA(E / meses.length)} por mes · estructura completa`)}
+    ${tile(mn.minimo == null ? "—" : usdA(mn.minimo), "Mínimo para cubrir costos", mn.minimo == null ? "el margen no alcanza" : `${usdA(mn.minimo / meses.length)} por mes · EBITDA 0`)}
+    ${tile(mn.objetivo == null ? "—" : usdA(mn.objetivo), `Mínimo con ${ccPct(s.obj)} de EBITDA`, mn.objetivo == null ? "objetivo inalcanzable con este margen" : `${usdA(mn.objetivo / meses.length)} por mes · EBITDA ${usdA(mn.objetivo * s.obj)}`)}
+    ${erp.hayDatos ? tile(usdA(erp.totEnv), `Facturado ${anio} (ERP)`, `+ ${usdA(erp.totPend)} a facturar = ${usdA(Ferp)}${mn.minimo ? ` · ${ccPct(Ferp / mn.minimo)} del mínimo` : ""}${hoyM && minHoy != null && hoyM < 12 ? `<br>A ${CC_MESES[hoyM - 1].toLowerCase()}: facturado ${usdA(factHoy)} vs. mínimo acumulado ${usdA(minHoy)}` : ""}`, mn.minimo && Ferp >= mn.minimo ? "var(--ok)" : "var(--danger)")
+      : tile("—", "Facturación del ERP", "sin acceso a los proyectos del ERP")}
+  </div>`;
+  // Cascada (como el Excel): columnas = escenarios de facturación
+  const cols = [
+    ["Mínimo para cubrir costos", ccCascada(mn.minimo, E, s)],
+    [`Mínimo con ${ccPct(s.obj)} EBITDA`, ccCascada(mn.objetivo, E, s)],
+    [`${e.Tipo === "Real" ? "Facturación del año" : "Presupuestada"} (${e.Title})`, ccCascada(ccN(e.FacturacionUSD), E, s)],
+    ...(comp && tc ? [[`Presupuestada (${comp.Title})`, ccCascada(ccN(comp.FacturacionUSD), tc.total, ccSupuestos(comp, null) || s)]] : []),
+    ...(erp.hayDatos ? [[`ERP: facturado + a facturar ${anio}`, ccCascada(Ferp, E, s)]] : []),
+  ].filter(([, c]) => c);
+  const fila = (lbl, k, fmt) => `<tr${k === "ebitda" ? ' class="cc-tot"' : ""}><td>${lbl}</td>${cols.map(([, c]) => `<td class="n">${fmt(c[k], c)}</td>`).join("")}</tr>`;
+  const usdSig = v => v == null ? "—" : `<span style="color:${v < -0.5 ? "var(--danger)" : v > 0.5 ? "var(--ok)" : "inherit"}">${usdA(v)}</span>`;
+  h += `<div class="cc-scroll"><table class="simple"><thead><tr><th></th>${cols.map(([l]) => `<th class="n" style="white-space:normal;max-width:170px;">${escapeHtml(l)}</th>`).join("")}</tr></thead><tbody>
+    ${fila("Facturación", "F", v => usdA(v))}
+    ${fila(`Ganancia bruta (${ccPct(s.mb)})`, "bruta", v => usdA(v))}
+    ${fila(`Ganancia neta (− ${ccPct(s.d)})`, "neta", v => usdA(v))}
+    ${fila("Estructura (costo total)", "E", v => "− " + usdA(v))}
+    ${fila("EBITDA", "ebitda", usdSig)}
+    ${fila("EBITDA % de la facturación", "pct", v => v == null ? "—" : ccPct(v))}
+    ${fila("Cubre el mínimo", "F", (v, c) => c.minimo ? `<span class="cc-chip ${v >= c.minimo - 0.5 ? "Activa" : "Baja"}">${v >= c.minimo - 0.5 ? "✔ Sí" : "✖ No"} · ${ccPct(v / c.minimo)}</span>` : "—")}
+  </tbody></table></div>`;
+  h += ccHtmlGraficoFacturacion(e, t, mn, erp, meses);
+  const fuente = s.fuente.id !== e.id ? `Supuestos tomados de <strong>${escapeHtml(s.fuente.Title)}</strong> (este escenario no tiene los suyos). ` : "";
+  return h + `<div class="motivo-chip" style="max-width:none;margin-top:10px;">${fuente}Margen bruto ${ccPct(s.mb)} · deducciones ${ccPct(s.d)} · EBITDA objetivo ${ccPct(s.obj)}.
+    Facturación del ERP = hitos de los proyectos por fecha plan vigente (o comercial si falta)${erp.nSinFecha ? `; <strong>${erp.nSinFecha} hitos sin fecha (${usdA(erp.sinFecha)})</strong> no entran en ningún año: cargales la fecha en Proyectos` : ""}.
+    ${e.Tipo === "Real" ? "La facturación del escenario Real sale de los hitos de los CANS." : ""}</div></div>`;
+}
+// Gráfico acumulado: mínimo y mínimo con ganancia (proporcionales a la estructura de cada mes) vs. facturación del ERP.
+function ccHtmlGraficoFacturacion(e, t, mn, erp, meses){
+  if(mn.minimo == null) return "";
+  const W = 760, H = 250, L = 64, R = 150, T = 14, B = 30, w = W - L - R, hh = H - T - B;
+  const a = { min: 0, obj: 0, env: 0, plan: 0 };
+  const pts = meses.map(m => {
+    a.min += (t.porMes[m] || 0) / mn.k;
+    a.obj += mn.objetivo != null ? (t.porMes[m] || 0) * mn.objetivo / t.total : 0;
+    a.env += erp.enviada[m] || 0;
+    a.plan += (erp.enviada[m] || 0) + (erp.pendiente[m] || 0);
+    return { m, ...a };
+  });
+  const max = Math.max(...pts.map(p => Math.max(p.min, p.obj, p.plan)), 1) * 1.08;
+  const x = i => L + (meses.length === 1 ? w / 2 : i * w / (meses.length - 1)), y = v => T + hh - v / max * hh;
+  const path = k => pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[k]).toFixed(1)}`).join("");
+  const grid = [0, .25, .5, .75, 1].map(f => { const v = max / 1.08 * f; return `<line x1="${L}" x2="${L + w}" y1="${y(v)}" y2="${y(v)}" stroke="#e5eaeb"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" font-size="10.5" fill="#666">${usdA(v)}</text>`; }).join("");
+  const ult = pts[pts.length - 1];
+  // etiquetas directas al final de cada línea, separadas si se pisan
+  const labs = [["Mínimo con ganancia", ult.obj, CC_COL.objetivo, mn.objetivo != null], ["Mínimo (costos)", ult.min, CC_COL.minimo, true], ["Facturado + a facturar", ult.plan, CC_COL.erp, erp.hayDatos], ["Facturado", ult.env, CC_COL.erp, erp.hayDatos]]
+    .filter(l => l[3]).map(l => ({ txt: l[0], yy: y(l[1]), col: l[2] })).sort((p, q) => p.yy - q.yy);
+  labs.forEach((l, i) => { if(i && l.yy - labs[i - 1].yy < 13) l.yy = labs[i - 1].yy + 13; });
+  const ancho = w / Math.max(meses.length - 1, 1);
+  const hov = pts.map((p, i) => `<rect x="${x(i) - ancho / 2}" y="${T}" width="${ancho}" height="${hh}" fill="transparent" onmouseenter="ccTip(event,${i})" onmouseleave="ccTip(null)"/>`).join("");
+  window.__ccPts = pts.map(p => ({ mes: CC_MESES[p.m - 1], min: p.min, obj: mn.objetivo != null ? p.obj : null, env: erp.hayDatos ? p.env : null, plan: erp.hayDatos ? p.plan : null }));
+  const leyenda = (col, dash, txt) => `<span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke="${col}" stroke-width="2" ${dash ? `stroke-dasharray="${dash}"` : ""}/></svg> ${txt}</span>`;
+  return `<div style="margin-top:18px;position:relative;" id="ccGrafWrap">
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Facturación acumulada vs. mínimo necesario</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--texto);margin-bottom:6px;">
+      ${leyenda(CC_COL.minimo, "5 3", "Mínimo para cubrir costos")}
+      ${mn.objetivo != null ? leyenda(CC_COL.objetivo, "5 3", "Mínimo con ganancia") : ""}
+      ${erp.hayDatos ? leyenda(CC_COL.erp, "", "Facturado (ERP)") + leyenda(CC_COL.erp, "2 3", "Facturado + a facturar (ERP)") : ""}
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;" role="img" aria-label="Facturación acumulada contra el mínimo necesario">
+      ${grid}
+      ${pts.map((p, i) => `<text x="${x(i)}" y="${H - 10}" text-anchor="middle" font-size="10.5" fill="#666">${CC_MESES[p.m - 1]}</text>`).join("")}
+      <path d="${path("min")}" fill="none" stroke="${CC_COL.minimo}" stroke-width="2" stroke-dasharray="6 4" stroke-linejoin="round"/>
+      ${mn.objetivo != null ? `<path d="${path("obj")}" fill="none" stroke="${CC_COL.objetivo}" stroke-width="2" stroke-dasharray="6 4" stroke-linejoin="round"/>` : ""}
+      ${erp.hayDatos ? `<path d="${path("plan")}" fill="none" stroke="${CC_COL.erp}" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
+        <path d="${path("env")}" fill="none" stroke="${CC_COL.erp}" stroke-width="2" stroke-linejoin="round"/>` : ""}
+      ${labs.map(l => `<text x="${L + w + 8}" y="${l.yy + 4}" font-size="11" fill="#1E2A2E"><tspan fill="${l.col}">●</tspan> ${escapeHtml(l.txt)}</text>`).join("")}
+      <line id="ccCross" x1="0" x2="0" y1="${T}" y2="${T + hh}" stroke="#9aa5a8" stroke-width="1" style="display:none"/>
+      ${hov}
+    </svg>
+    <div id="ccTipBox" style="display:none;position:absolute;pointer-events:none;background:#fff;border:1px solid var(--gris-claro);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);min-width:210px;z-index:5;"></div>
+  </div>`;
+}
+function ccTip(ev, i){
+  const box = document.getElementById("ccTipBox"), cross = document.getElementById("ccCross");
+  if(!box) return;
+  if(ev == null){ box.style.display = "none"; cross.style.display = "none"; return; }
+  const p = window.__ccPts[i], rect = ev.target, svg = rect.ownerSVGElement, wrap = document.getElementById("ccGrafWrap");
+  const cx = Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2;
+  cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.style.display = "";
+  const row = (c, l, v, dash) => v == null ? "" : `<div style="display:flex;gap:8px;justify-content:space-between;"><span><svg width="16" height="8"><line x1="0" x2="16" y1="4" y2="4" stroke="${c}" stroke-width="2" ${dash ? `stroke-dasharray="${dash}"` : ""}/></svg> ${l}</span><strong>${usdA(v)}</strong></div>`;
+  box.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">Acumulado a ${escapeHtml(p.mes)}</div>
+    ${row(CC_COL.minimo, "Mínimo (costos)", p.min, "5 3")}${row(CC_COL.objetivo, "Mínimo con ganancia", p.obj, "5 3")}${row(CC_COL.erp, "Facturado", p.env)}${row(CC_COL.erp, "Facturado + a facturar", p.plan, "2 3")}`;
+  const sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+  const px = sr.left - wr.left + cx / 760 * sr.width;
+  box.style.display = "block";
+  box.style.left = Math.min(Math.max(px + 12, 0), wr.width - box.offsetWidth) + "px";
+  box.style.top = (sr.top - wr.top + 40) + "px";
+}
+// Los supuestos de facturación son de análisis: se pueden cambiar aunque el escenario esté Aprobado o Cerrado.
+function ccModalSupuestos(id){
+  const e = ccEsc(id);
+  const num = (idc, lbl, val, hint) => `<div class="campo"><label>${lbl}</label><input type="number" step="any" id="${idc}" value="${val}"><div class="hint">${hint}</div></div>`;
+  ccAbrirModal(`${ccHeadModal("Supuestos de facturación", escapeHtml(e.Title))}
+    ${num("ccSuMb", "Margen bruto (% de la facturación)", ccPctVal(e.MargenBrutoPct), "Lo que queda de cada dólar facturado después de proveedores, licencias y otros costos de los proyectos. En el Excel: “Ganancia bruta”.")}
+    ${num("ccSuD", "Deducciones sobre la ganancia bruta (%)", ccPctVal(e.DeduccionesPct), "De ganancia bruta a ganancia neta (impuestos, comisiones u otros descuentos). Vacío = 0.")}
+    ${num("ccSuObj", "EBITDA objetivo (% de la facturación)", ccPctVal(e.EbitdaObjetivoPct), "Ganancia mínima para que tenga sentido la empresa. Define el “mínimo con ganancia”. Vacío = 0.")}
+    <div class="hint" style="margin-bottom:6px;">Solo cambia estos tres datos: los movimientos no se tocan aunque el escenario esté ${escapeHtml(e.Estado)}. Con el margen vacío, el escenario usa los supuestos del presupuesto vigente.</div>
+    ${ccPieModal(`ccGuardarSupuestos('${escapeHtml(e.id)}')`)}`);
+}
+function ccGuardarSupuestos(id){
+  return ccEjecutarModal(async () => {
+    const campos = { MargenBrutoPct: ccPctIn("ccSuMb"), DeduccionesPct: ccPctIn("ccSuD"), EbitdaObjetivoPct: ccPctIn("ccSuObj") };
+    if(Object.values(campos).some(v => v != null && (isNaN(v) || v < 0 || v >= 1))) return ccErrModal("Los porcentajes tienen que estar entre 0 y 99,99 %.");
+    await ccActualizar("escenarios", id, campos);
+    Object.assign(ccEsc(id), campos);
+    cerrarModal("overlayCC");
+    mostrarToast("Supuestos de facturación guardados");
+    renderCC();
+  });
 }
 
 // ---- 2. Movimientos ----
@@ -4552,9 +4763,9 @@ function ccModalCopiar(srcId){
     <div class="campo"><label>Ajuste salarial (%)</label><input type="number" step="any" id="ccCpAjuste" value="0" oninput="ccCpAuto()">
       <div class="hint">Se aplica al Monto de las categorías marcadas:</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12.5px;">${cats.map(c => `<label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" class="ccCpCat" value="${escapeHtml(c)}" ${c.startsWith("Nómina") ? "checked" : ""} onchange="ccCpAuto()" style="width:auto;">${escapeHtml(c)}</label>`).join("")}</div></div>
-    <div class="campo-2"><div class="campo"><label>ARS por USD</label><input type="number" step="any" id="ccCpTcArs" value="${ccN(s.TC_ARS) ?? ""}" oninput="ccCpAuto()"></div>
-      <div class="campo"><label>EUR por USD</label><input type="number" step="any" id="ccCpTcEur" value="${ccN(s.TC_EUR) ?? ""}" oninput="ccCpAuto()"></div></div>
-    <div class="hint" style="margin:-6px 0 10px;">Los movimientos en ARS/EUR se recalculan con estos tipos de cambio. Vacío = conserva los USD de origen.</div>
+    <div class="campo-2"><div class="campo"><label>ARS por USD (nuevo)</label><input type="number" step="any" id="ccCpTcArs" value="" placeholder="origen: ${ccN(s.TC_ARS) ?? "—"}" oninput="ccCpAuto()"></div>
+      <div class="campo"><label>EUR por USD (nuevo)</label><input type="number" step="any" id="ccCpTcEur" value="" placeholder="origen: ${ccN(s.TC_EUR) ?? "—"}" oninput="ccCpAuto()"></div></div>
+    <div class="hint" style="margin:-6px 0 10px;">Vacío = conserva el tipo de cambio y los USD de cada movimiento (para un retroactivo del mismo año). Con un valor, los movimientos en ARS/EUR se recalculan con ese tipo de cambio (para un presupuesto de un año nuevo).</div>
     <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-bottom:10px;"><input type="checkbox" id="ccCpBajas" checked onchange="ccCpAuto()" style="width:auto;"> Omitir movimientos de personas dadas de baja antes del año destino</label>
     <div class="panel" style="margin:0;padding:10px 12px;font-size:12.5px;" id="ccCpResumen"></div>
     <div style="font-size:12.5px;margin-top:8px;color:var(--azul-oscuro);" id="ccCpProgreso"></div>
@@ -4615,6 +4826,7 @@ function ccEjecutarCopia(srcId){
       MesDesde: ccN(s.MesDesde) || 1, MesHasta: ccN(s.MesHasta) || 12, FacturacionUSD: ccN(s.FacturacionUSD), VentaAdjudicadaUSD: ccN(s.VentaAdjudicadaUSD),
       HorasCargadas: ccN(s.HorasCargadas), Ocupacion: ccN(s.Ocupacion), TC_ARS: cfg.tcArs ?? ccN(s.TC_ARS), TC_EUR: cfg.tcEur ?? ccN(s.TC_EUR),
       CargasSocialesPct: ccN(s.CargasSocialesPct), SACPct: ccN(s.SACPct), AjusteSalarialPct: cfg.ajuste,
+      MargenBrutoPct: ccN(s.MargenBrutoPct), DeduccionesPct: ccN(s.DeduccionesPct), EbitdaObjetivoPct: ccN(s.EbitdaObjetivoPct),
       Notas: `Copiado de ${s.Title} el ${fmt(HOY_ISO)}. Ajuste salarial ${ccR(cfg.ajuste * 100, 2)}%${cfg.cats.length ? " sobre " + cfg.cats.join(", ") : ""}.`,
     });
     const ruta = await ccRutaLista("movimientos");
