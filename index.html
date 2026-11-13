@@ -4261,7 +4261,8 @@ function ccSupuestos(e, comp){
   const de = x => x && ccN(x.MargenBrutoPct) != null
     ? { mb: ccN(x.MargenBrutoPct), d: ccN(x.DeduccionesPct) ?? 0, obj: ccN(x.EbitdaObjetivoPct) ?? 0, fuente: x } : null;
   const vig = cc.escenarios.find(x => ccN(x.Anio) === ccN(e.Anio) && ccEsPresupuesto(x) && x.Vigente);
-  return de(e) || de(comp) || de(vig) || null;
+  const ultimo = [...cc.escenarios].sort((x, y) => ccN(y.Anio) - ccN(x.Anio)).find(x => ccN(x.MargenBrutoPct) != null);
+  return de(e) || de(comp) || de(vig) || de(ultimo) || null;
 }
 function ccCascada(F, E, s){
   if(F == null) return null;
@@ -4287,47 +4288,106 @@ function ccFacturacionERP(anio){
   }));
   return r;
 }
+// Cuadro "Facturación necesaria": los supuestos (margen bruto, deducciones, EBITDA ideal) se editan en el mismo cuadro y los
+// números se recalculan en vivo; "Guardar" los graba en el escenario (se puede aunque esté Aprobado o Cerrado: no toca movimientos).
+// Valores iniciales: los guardados en el escenario → comparado → presupuesto vigente del año → el escenario más reciente que tenga.
+const ccSupTmp = {}; // escId → { mb, d, obj } editados y todavía sin guardar
 function ccHtmlFacturacion(e, t, comp, tc){
-  const s = ccSupuestos(e, comp), anio = ccN(e.Anio), meses = ccMesesDe(e);
-  const btn = ccPuedeEditar !== false ? `<button class="btn-mini" onclick="ccModalSupuestos('${escapeHtml(e.id)}')">⚙ Supuestos de facturación</button>` : "";
-  let h = `<div class="panel"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;"><h3 style="margin:0;">Facturación necesaria — ${escapeHtml(e.Title)}</h3><span style="margin-left:auto;">${btn}</span></div>`;
-  if(!s) return h + `<div style="font-size:13px;color:var(--gris);line-height:1.6;">Faltan los supuestos para calcular la facturación mínima: <strong>margen bruto</strong> (qué queda de cada dólar facturado después de proveedores y licencias), <strong>deducciones</strong> (de ganancia bruta a neta) y <strong>EBITDA objetivo</strong>. Se cargan una vez por escenario con “⚙ Supuestos de facturación”.<br>Mientras tanto, el piso absoluto es la estructura total: ${usdA(t.total)} (${usdA(t.total / meses.length)} por mes).</div></div>`;
-  const E = t.total, mn = ccMinimos(E, s), erp = ccFacturacionERP(anio), Ferp = erp.totEnv + erp.totPend;
+  const base = ccSupuestos(e, comp);
+  const v = ccSupTmp[e.id] || base || { mb: null, d: null, obj: null };
+  const puede = ccPuedeEditar !== false;
+  const inp = (id, lbl, val, hint) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--gris);" title="${escapeHtml(hint)}">${lbl}
+    <span style="display:flex;align-items:center;gap:4px;"><input type="number" step="any" min="0" max="99.99" id="${id}" value="${val == null ? "" : ccR(val * 100, 4)}" oninput="ccSupCambio('${escapeHtml(e.id)}')"
+      style="width:78px;padding:6px 7px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;color:var(--texto);"> %</span></label>`;
+  return `<div class="panel" id="ccFactPanel">
+    <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+      <h3 style="margin:0 auto 6px 0;">Facturación necesaria — ${escapeHtml(e.Title)}</h3>
+      ${inp("ccSupMb", "Ganancia bruta", v.mb, "Margen bruto: lo que queda de cada dólar facturado después de proveedores y licencias")}
+      ${inp("ccSupD", "Deducciones (bruta → neta)", v.d, "Impuestos, comisiones u otros descuentos sobre la ganancia bruta")}
+      ${inp("ccSupObj", "EBITDA ideal", v.obj, "Ganancia mínima sobre la facturación para que tenga sentido la empresa")}
+      ${puede ? `<button class="btn btn-primario" id="ccSupGuardar" onclick="ccGuardarSupInline('${escapeHtml(e.id)}')" style="display:${ccSupTmp[e.id] ? "" : "none"};">Guardar en el escenario</button>` : ""}
+    </div>
+    <div id="ccSupFuente" style="font-size:11.5px;color:var(--gris);margin:-6px 0 12px;">${ccSupFuenteTxt(e, base)}</div>
+    <div id="ccFactRes">${ccHtmlFactResultados(e, t, comp, tc, v)}</div>
+  </div>`;
+}
+function ccSupFuenteTxt(e, base){
+  if(ccSupTmp[e.id]) return "✏️ Valores editados, todavía sin guardar: los números de abajo ya los usan.";
+  if(!base) return "Cargá los porcentajes de arriba: los números se calculan mientras escribís.";
+  return base.fuente.id === e.id ? "Supuestos guardados en este escenario." : `Supuestos tomados de <strong>${escapeHtml(base.fuente.Title)}</strong> (este escenario no tiene los suyos). Si los cambiás y guardás, quedan en ${escapeHtml(e.Title)}.`;
+}
+function ccSupCambio(escId){
+  const leer = id => { const s = ccV(id); return s === "" ? null : Number(s) / 100; };
+  ccSupTmp[escId] = { mb: leer("ccSupMb"), d: leer("ccSupD"), obj: leer("ccSupObj") };
+  const e = ccEsc(escId), t = ccTotales(e.id), comp = ccComparacion(e), tc = comp ? ccTotales(comp.id) : null;
+  document.getElementById("ccFactRes").innerHTML = ccHtmlFactResultados(e, t, comp, tc, ccSupTmp[escId]);
+  document.getElementById("ccSupFuente").innerHTML = ccSupFuenteTxt(e, ccSupuestos(e, comp));
+  const b = document.getElementById("ccSupGuardar");
+  if(b) b.style.display = "";
+}
+async function ccGuardarSupInline(escId){
+  const v = ccSupTmp[escId];
+  if(!v) return;
+  if([v.mb, v.d, v.obj].some(x => x != null && (isNaN(x) || x < 0 || x >= 1))) return mostrarToast("Los porcentajes tienen que estar entre 0 y 99,99 %.");
+  const b = document.getElementById("ccSupGuardar");
+  b.disabled = true;
+  try{
+    const campos = { MargenBrutoPct: v.mb, DeduccionesPct: v.d, EbitdaObjetivoPct: v.obj };
+    await ccActualizar("escenarios", escId, campos);
+    Object.assign(ccEsc(escId), campos);
+    delete ccSupTmp[escId];
+    mostrarToast("Supuestos guardados en el escenario");
+    renderCC();
+  } catch(err){ ccError(err); b.disabled = false; }
+}
+function ccHtmlFactResultados(e, t, comp, tc, v){
+  const meses = ccMesesDe(e), E = t.total;
+  const s = v && v.mb != null && !isNaN(v.mb) ? { mb: v.mb, d: v.d && !isNaN(v.d) ? v.d : 0, obj: v.obj && !isNaN(v.obj) ? v.obj : 0 } : null;
+  const mn = s ? ccMinimos(E, s) : { minimo: null, objetivo: null, k: null };
+  const erp = ccFacturacionERP(ccN(e.Anio)), Ferp = erp.totEnv + erp.totPend;
   const tile = (num, lbl, sub, color) => `<div class="stat-tile"><div class="num" ${color ? `style="color:${color}"` : ""}>${num}</div><div class="lbl">${lbl}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
-  const hoyM = new Date().getFullYear() === anio ? new Date().getMonth() + 1 : (anio < new Date().getFullYear() ? 12 : 0);
+  const anio = ccN(e.Anio), hoyA = new Date().getFullYear();
+  const hoyM = hoyA === anio ? new Date().getMonth() + 1 : (anio < hoyA ? 12 : 0);
   const acum = (obj, hasta) => meses.filter(m => m <= hasta).reduce((a, m) => a + (obj[m] || 0), 0);
   const minHoy = mn.minimo != null ? acum(t.porMes, hoyM) / mn.k : null, factHoy = acum(erp.enviada, hoyM);
-  h += `<div class="grid-stats" style="margin-bottom:14px;">
-    ${tile(usdA(E), "Costo total del año", `${usdA(E / meses.length)} por mes · estructura completa`)}
-    ${tile(mn.minimo == null ? "—" : usdA(mn.minimo), "Mínimo para cubrir costos", mn.minimo == null ? "el margen no alcanza" : `${usdA(mn.minimo / meses.length)} por mes · EBITDA 0`)}
-    ${tile(mn.objetivo == null ? "—" : usdA(mn.objetivo), `Mínimo con ${ccPct(s.obj)} de EBITDA`, mn.objetivo == null ? "objetivo inalcanzable con este margen" : `${usdA(mn.objetivo / meses.length)} por mes · EBITDA ${usdA(mn.objetivo * s.obj)}`)}
-    ${erp.hayDatos ? tile(usdA(erp.totEnv), `Facturado ${anio} (ERP)`, `+ ${usdA(erp.totPend)} a facturar = ${usdA(Ferp)}${mn.minimo ? ` · ${ccPct(Ferp / mn.minimo)} del mínimo` : ""}${hoyM && minHoy != null && hoyM < 12 ? `<br>A ${CC_MESES[hoyM - 1].toLowerCase()}: facturado ${usdA(factHoy)} vs. mínimo acumulado ${usdA(minHoy)}` : ""}`, mn.minimo && Ferp >= mn.minimo ? "var(--ok)" : "var(--danger)")
+  let h = `<div class="grid-stats" style="margin-bottom:16px;">
+    ${tile(usdA(E), "Costo total (estructura)", `${usdA(E / meses.length)} por mes`)}
+    ${tile(mn.minimo == null ? "—" : usdA(mn.minimo), "Facturación mínima", mn.minimo == null ? (s ? "el margen no alcanza" : "falta la ganancia bruta") : `${usdA(mn.minimo / meses.length)} por mes · cubre los costos (EBITDA 0)`, mn.minimo == null ? null : "var(--azul-oscuro)")}
+    ${tile(mn.objetivo == null ? "—" : usdA(mn.objetivo), `Facturación ideal${s && s.obj ? ` (EBITDA ${ccPct(s.obj)})` : ""}`, mn.objetivo == null ? (s ? "inalcanzable con este margen" : "falta la ganancia bruta") : s.obj ? `${usdA(mn.objetivo / meses.length)} por mes · EBITDA ${usdA(mn.objetivo * s.obj)}` : "cargá el EBITDA ideal", mn.objetivo == null ? null : "var(--ok)")}
+    ${erp.hayDatos ? tile(usdA(Ferp), `Facturación ${anio} en el ERP`, `${usdA(erp.totEnv)} facturado + ${usdA(erp.totPend)} a facturar${mn.minimo ? ` · ${ccPct(Ferp / mn.minimo)} del mínimo` : ""}${hoyM && hoyM < 12 && minHoy != null ? `<br>A ${CC_MESES[hoyM - 1].toLowerCase()}: facturado ${usdA(factHoy)} vs. mínimo acumulado ${usdA(minHoy)}` : ""}`, mn.minimo ? (Ferp >= mn.minimo ? "var(--ok)" : "var(--danger)") : null)
       : tile("—", "Facturación del ERP", "sin acceso a los proyectos del ERP")}
   </div>`;
+  // Cuadro por categoría: cuánto cuesta cada línea y cuánto hay que facturar para cubrirla
+  const cats = [...CC_CATEGORIAS, ...Object.keys(t.porCat)].filter((c, i, a) => a.indexOf(c) === i && t.porCat[c]);
+  const fMin = c => mn.minimo == null ? "—" : usdA(c / mn.k), fIdeal = c => mn.objetivo == null ? "—" : usdA(c * mn.objetivo / E);
+  h += `<div class="cc-scroll"><table class="simple"><thead><tr><th>Costos por categoría</th><th class="n">Costo anual</th><th class="n">Por mes</th><th class="n">% del total</th>
+      <th class="n">Facturación mínima</th><th class="n">Facturación ideal</th></tr></thead><tbody>
+    ${cats.map(c => { const x = t.porCat[c].total; return `<tr><td>${escapeHtml(c)}</td><td class="n">${usdA(x)}</td><td class="n">${usdA(x / meses.length)}</td><td class="n">${E ? ccPct(x / E) : "—"}</td><td class="n">${fMin(x)}</td><td class="n">${fIdeal(x)}</td></tr>`; }).join("")}
+    <tr class="cc-tot"><td>Total</td><td class="n">${usdA(E)}</td><td class="n">${usdA(E / meses.length)}</td><td class="n">100%</td><td class="n">${fMin(E)}</td><td class="n">${fIdeal(E)}</td></tr>
+  </tbody></table></div>`;
+  if(!s) return h + `<div class="motivo-chip" style="max-width:none;margin-top:10px;">Facturación mínima = la que, después de proveedores (ganancia bruta) y deducciones, alcanza para pagar toda la estructura. Facturación ideal = la que además deja el EBITDA ideal.</div>`;
   // Cascada (como el Excel): columnas = escenarios de facturación
   const cols = [
-    ["Mínimo para cubrir costos", ccCascada(mn.minimo, E, s)],
-    [`Mínimo con ${ccPct(s.obj)} EBITDA`, ccCascada(mn.objetivo, E, s)],
+    ["Mínima", ccCascada(mn.minimo, E, s)],
+    [`Ideal (EBITDA ${ccPct(s.obj)})`, ccCascada(mn.objetivo, E, s)],
     [`${e.Tipo === "Real" ? "Facturación del año" : "Presupuestada"} (${e.Title})`, ccCascada(ccN(e.FacturacionUSD), E, s)],
     ...(comp && tc ? [[`Presupuestada (${comp.Title})`, ccCascada(ccN(comp.FacturacionUSD), tc.total, ccSupuestos(comp, null) || s)]] : []),
     ...(erp.hayDatos ? [[`ERP: facturado + a facturar ${anio}`, ccCascada(Ferp, E, s)]] : []),
   ].filter(([, c]) => c);
   const fila = (lbl, k, fmt) => `<tr${k === "ebitda" ? ' class="cc-tot"' : ""}><td>${lbl}</td>${cols.map(([, c]) => `<td class="n">${fmt(c[k], c)}</td>`).join("")}</tr>`;
-  const usdSig = v => v == null ? "—" : `<span style="color:${v < -0.5 ? "var(--danger)" : v > 0.5 ? "var(--ok)" : "inherit"}">${usdA(v)}</span>`;
-  h += `<div class="cc-scroll"><table class="simple"><thead><tr><th></th>${cols.map(([l]) => `<th class="n" style="white-space:normal;max-width:170px;">${escapeHtml(l)}</th>`).join("")}</tr></thead><tbody>
-    ${fila("Facturación", "F", v => usdA(v))}
-    ${fila(`Ganancia bruta (${ccPct(s.mb)})`, "bruta", v => usdA(v))}
-    ${fila(`Ganancia neta (− ${ccPct(s.d)})`, "neta", v => usdA(v))}
-    ${fila("Estructura (costo total)", "E", v => "− " + usdA(v))}
+  const usdSig = x => x == null ? "—" : `<span style="color:${x < -0.5 ? "var(--danger)" : x > 0.5 ? "var(--ok)" : "inherit"}">${usdA(x)}</span>`;
+  h += `<div class="cc-scroll" style="margin-top:16px;"><table class="simple"><thead><tr><th>Resultado según facturación</th>${cols.map(([l]) => `<th class="n" style="white-space:normal;max-width:170px;">${escapeHtml(l)}</th>`).join("")}</tr></thead><tbody>
+    ${fila("Facturación", "F", x => usdA(x))}
+    ${fila(`Ganancia bruta (${ccPct(s.mb)})`, "bruta", x => usdA(x))}
+    ${fila(`Ganancia neta (− ${ccPct(s.d)})`, "neta", x => usdA(x))}
+    ${fila("Estructura (costo total)", "E", x => "− " + usdA(x))}
     ${fila("EBITDA", "ebitda", usdSig)}
-    ${fila("EBITDA % de la facturación", "pct", v => v == null ? "—" : ccPct(v))}
-    ${fila("Cubre el mínimo", "F", (v, c) => c.minimo ? `<span class="cc-chip ${v >= c.minimo - 0.5 ? "Activa" : "Baja"}">${v >= c.minimo - 0.5 ? "✔ Sí" : "✖ No"} · ${ccPct(v / c.minimo)}</span>` : "—")}
+    ${fila("EBITDA % de la facturación", "pct", x => x == null ? "—" : ccPct(x))}
+    ${fila("Cubre el mínimo", "F", (x, c) => c.minimo ? `<span class="cc-chip ${x >= c.minimo - 0.5 ? "Activa" : "Baja"}">${x >= c.minimo - 0.5 ? "✔ Sí" : "✖ No"} · ${ccPct(x / c.minimo)}</span>` : "—")}
   </tbody></table></div>`;
   h += ccHtmlGraficoFacturacion(e, t, mn, erp, meses);
-  const fuente = s.fuente.id !== e.id ? `Supuestos tomados de <strong>${escapeHtml(s.fuente.Title)}</strong> (este escenario no tiene los suyos). ` : "";
-  return h + `<div class="motivo-chip" style="max-width:none;margin-top:10px;">${fuente}Margen bruto ${ccPct(s.mb)} · deducciones ${ccPct(s.d)} · EBITDA objetivo ${ccPct(s.obj)}.
-    Facturación del ERP = hitos de los proyectos por fecha plan vigente (o comercial si falta)${erp.nSinFecha ? `; <strong>${erp.nSinFecha} hitos sin fecha (${usdA(erp.sinFecha)})</strong> no entran en ningún año: cargales la fecha en Proyectos` : ""}.
-    ${e.Tipo === "Real" ? "La facturación del escenario Real sale de los hitos de los CANS." : ""}</div></div>`;
+  return h + `<div class="motivo-chip" style="max-width:none;margin-top:10px;">Facturación del ERP = hitos de los proyectos por fecha plan vigente (o comercial si falta)${erp.nSinFecha ? `; <strong>${erp.nSinFecha} hitos sin fecha (${usdA(erp.sinFecha)})</strong> no entran en ningún año: cargales la fecha en Proyectos` : ""}.
+    ${e.Tipo === "Real" ? "La facturación del escenario Real sale de los hitos de los CANS." : ""}</div>`;
 }
 // Gráfico acumulado: mínimo y mínimo con ganancia (proporcionales a la estructura de cada mes) vs. facturación del ERP.
 function ccHtmlGraficoFacturacion(e, t, mn, erp, meses){
@@ -4391,29 +4451,6 @@ function ccTip(ev, i){
   box.style.left = Math.min(Math.max(px + 12, 0), wr.width - box.offsetWidth) + "px";
   box.style.top = (sr.top - wr.top + 40) + "px";
 }
-// Los supuestos de facturación son de análisis: se pueden cambiar aunque el escenario esté Aprobado o Cerrado.
-function ccModalSupuestos(id){
-  const e = ccEsc(id);
-  const num = (idc, lbl, val, hint) => `<div class="campo"><label>${lbl}</label><input type="number" step="any" id="${idc}" value="${val}"><div class="hint">${hint}</div></div>`;
-  ccAbrirModal(`${ccHeadModal("Supuestos de facturación", escapeHtml(e.Title))}
-    ${num("ccSuMb", "Margen bruto (% de la facturación)", ccPctVal(e.MargenBrutoPct), "Lo que queda de cada dólar facturado después de proveedores, licencias y otros costos de los proyectos. En el Excel: “Ganancia bruta”.")}
-    ${num("ccSuD", "Deducciones sobre la ganancia bruta (%)", ccPctVal(e.DeduccionesPct), "De ganancia bruta a ganancia neta (impuestos, comisiones u otros descuentos). Vacío = 0.")}
-    ${num("ccSuObj", "EBITDA objetivo (% de la facturación)", ccPctVal(e.EbitdaObjetivoPct), "Ganancia mínima para que tenga sentido la empresa. Define el “mínimo con ganancia”. Vacío = 0.")}
-    <div class="hint" style="margin-bottom:6px;">Solo cambia estos tres datos: los movimientos no se tocan aunque el escenario esté ${escapeHtml(e.Estado)}. Con el margen vacío, el escenario usa los supuestos del presupuesto vigente.</div>
-    ${ccPieModal(`ccGuardarSupuestos('${escapeHtml(e.id)}')`)}`);
-}
-function ccGuardarSupuestos(id){
-  return ccEjecutarModal(async () => {
-    const campos = { MargenBrutoPct: ccPctIn("ccSuMb"), DeduccionesPct: ccPctIn("ccSuD"), EbitdaObjetivoPct: ccPctIn("ccSuObj") };
-    if(Object.values(campos).some(v => v != null && (isNaN(v) || v < 0 || v >= 1))) return ccErrModal("Los porcentajes tienen que estar entre 0 y 99,99 %.");
-    await ccActualizar("escenarios", id, campos);
-    Object.assign(ccEsc(id), campos);
-    cerrarModal("overlayCC");
-    mostrarToast("Supuestos de facturación guardados");
-    renderCC();
-  });
-}
-
 // ---- 2. Movimientos ----
 function ccHtmlMovimientos(){
   const e = ccEsc(cc.escId);
