@@ -72,6 +72,21 @@
   .module-tab .candado{font-size:11px;margin-left:2px;}
   .module-tab.active{background:var(--fondo);color:var(--texto);font-weight:700;}
 
+  /* Centro de costos */
+  .cc-barra{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px;font-size:12.5px;color:var(--gris);}
+  .cc-barra select, .cc-barra input{padding:7px;border:1px solid var(--gris-claro);border-radius:6px;font-size:13px;margin-left:4px;background:#fff;color:var(--texto);}
+  .cc-aviso{background:#FDF3D8;color:#7a5a00;border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:14px;}
+  .cc-scroll{overflow-x:auto;}
+  .cc-anio{font-size:15px;margin:18px 0 8px;color:var(--azul-oscuro);}
+  table.simple th.n, table.simple td.n{text-align:right;white-space:nowrap;}
+  table.simple tr.cc-tot td{font-weight:700;border-top:2px solid var(--gris-claro);}
+  table.simple tr.cc-sub td{color:var(--gris);font-size:11.5px;}
+  .cc-chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#eef1f2;color:var(--pend);white-space:nowrap;}
+  .cc-chip.Borrador{background:#FDF3D8;color:var(--warn);}
+  .cc-chip.Aprobado{background:var(--badge-bg);color:var(--azul-oscuro);}
+  .cc-chip.Activa{background:#E3F5E8;color:var(--ok);}
+  .cc-chip.Baja{background:#FBE4E1;color:var(--danger);}
+
   /* Proyecto card (Financiero) */
   .proyecto{background:#fff;border:1px solid var(--gris-claro);border-radius:10px;margin-bottom:16px;overflow:hidden;}
   .proyecto-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;cursor:pointer;gap:16px;flex-wrap:wrap;}
@@ -380,6 +395,8 @@
       <div class="module-tab" data-vista="ingenieros" data-roles="pm,gerencia">🧑‍💻 Ingenieros</div>
       <div class="module-tab" data-vista="estadisticas" data-roles="gerencia,administracion">📊 Estadísticas</div>
       <div class="module-tab" data-vista="archivo" data-roles="pm,administracion,gerencia">🗄️ Archivo</div>
+      <!-- Sin data-roles: se muestra solo si el usuario puede leer CC_Escenarios (ccProbarAcceso) -->
+      <div class="module-tab" data-vista="cc" id="tabCC" style="display:none;">💰 Centro de costos</div>
     </div>
     <main>
       <div id="vistaProyectos"></div>
@@ -407,6 +424,16 @@
       <div id="vistaIngenierosWrap" style="display:none;">
         <div class="grid-stats" id="kpisTop"></div>
         <div id="vistaIngenieros"></div>
+      </div>
+      <div id="vistaCCWrap" style="display:none;">
+        <div class="substat-tabs" id="ccSubtabs">
+          <button class="substat-btn" data-cc="resumen" onclick="ccCambiarSub('resumen')">📈 Resumen</button>
+          <button class="substat-btn" data-cc="movimientos" onclick="ccCambiarSub('movimientos')">🧾 Movimientos</button>
+          <button class="substat-btn" data-cc="personas" onclick="ccCambiarSub('personas')">👥 Personas</button>
+          <button class="substat-btn" data-cc="escenarios" onclick="ccCambiarSub('escenarios')">🗂️ Escenarios</button>
+          <button class="substat-btn" data-cc="publicar" onclick="ccCambiarSub('publicar')">📤 Publicar parámetros</button>
+        </div>
+        <div id="vistaCC"></div>
       </div>
     </main>
   </div>
@@ -749,6 +776,10 @@
   </div>
 </div>
 
+<div class="overlay" id="overlayCC">
+  <div class="modal modal-editar" id="ccModal"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 </div><!-- /#appRoot -->
 
@@ -820,9 +851,18 @@ async function obtenerToken(scopes){
     const res = await msalInstance.acquireTokenSilent(request);
     return res.accessToken;
   } catch(e){
-    const res = await msalInstance.acquireTokenPopup(request);
-    return res.accessToken;
+    try{
+      const res = await msalInstance.acquireTokenPopup(request);
+      return res.accessToken;
+    } catch(e2){
+      if(esPopupBloqueado(e2)){ await msalInstance.acquireTokenRedirect(request); return new Promise(()=>{}); } // la página se va a Microsoft y vuelve
+      throw e2;
+    }
   }
+}
+// El navegador (o el panel embebido) bloqueó la ventana emergente de login: se sigue por redirección en la misma pestaña.
+function esPopupBloqueado(e){
+  return !!e && ["popup_window_error", "empty_window_error"].includes(e.errorCode);
 }
 
 async function graphFetch(url, opciones = {}){
@@ -1215,11 +1255,14 @@ async function cargarRolesUsuario(){
     rolesUsuario = (data.value || [])
       .map(g => GRUPOS_ROL[g.displayName])
       .filter(Boolean);
+    ccPuedeEditar = (data.value || []).some(g => g.displayName === GRUPO_CC_EDICION);
   } catch(e){
     console.warn("No se pudo leer el grupo de Entra ID del usuario (falta el permiso GroupMember.Read.All o no fue consentido). Se muestran todos los módulos.", e);
     rolesUsuario = null; // null = desconocido → no se oculta nada
+    ccPuedeEditar = null;
   }
   aplicarGatingDeRoles();
+  if(vistaActual === "cc") renderCC();
 }
 
 // Qué hacer con los módulos a los que el usuario no tiene acceso: "candado" (se ven bloqueados) u "ocultar".
@@ -1297,7 +1340,15 @@ async function iniciarApp(){
 async function login(){
   document.getElementById("btnLogin").disabled = true;
   document.getElementById("loginMsg").textContent = "Conectando con Microsoft…";
-  const res = await msalInstance.loginPopup({ scopes: LOGIN_SCOPES, prompt: "select_account" });
+  let res;
+  try{
+    res = await msalInstance.loginPopup({ scopes: LOGIN_SCOPES, prompt: "select_account" });
+  } catch(e){
+    if(!esPopupBloqueado(e)) throw e;
+    document.getElementById("loginMsg").textContent = "Ventana emergente bloqueada: redirigiendo a Microsoft…";
+    await msalInstance.loginRedirect({ scopes: LOGIN_SCOPES, prompt: "select_account" }); // vuelve a esta página; lo toma handleRedirectPromise en iniciarApp
+    return;
+  }
   cuentaActual = res.account;
   await despuesDeLogin();
 }
@@ -1317,6 +1368,7 @@ async function despuesDeLogin(){
     document.getElementById("userBadgeNombre").textContent = cuentaActual.name || cuentaActual.username;
     await cargarDatosERP();
     cargarRolesUsuario(); // no bloqueante — se aplica cuando termine
+    ccProbarAcceso();     // no bloqueante — muestra la pestaña Centro de costos si el usuario puede leer CC_Escenarios
     document.getElementById("loginGate").style.display = "none";
     document.getElementById("appRoot").style.display = "flex";
     inicializarVistaApp();
@@ -3855,6 +3907,856 @@ function descargarCsvArchivo(){
 }
 
 // =====================================================================
+// Centro de costos — listas CC_* (sitio Finanzas: Personas / Escenarios / Movimientos; sitio ACP: Parametros)
+// Confidencial (sueldos): en el código solo van IDs de listas, nunca datos. Todo texto de SharePoint pasa por escapeHtml.
+// - La pestaña aparece solo si el usuario puede leer CC_Escenarios (ccProbarAcceso, al login).
+// - Botones de edición: grupo de Entra ERP-CC-Edicion. Es solo UI: el límite real son los permisos de las listas.
+// - Movimientos editables solo con el escenario en Borrador (Aprobado y Cerrado = solo lectura; cambios = nueva versión).
+// =====================================================================
+const GRAPH_V1 = "https://graph.microsoft.com/v1.0";
+const CC_SITIOS = {
+  finanzas: "sunsettechnology567.sharepoint.com:/sites/administracion-FINANZAS",
+  acp: "sunsettechnology567.sharepoint.com:/sites/acp",
+};
+const CC_LISTAS = {
+  personas:    { sitio: "finanzas", id: "c64a31a0-afaf-404c-aff7-667778ddcaf3" },
+  escenarios:  { sitio: "finanzas", id: "5dfd82e1-ec23-4efc-9b50-3741c0b6951a" },
+  movimientos: { sitio: "finanzas", id: "3a60ea6f-8b2b-4d84-86da-80570569efac" },
+  parametros:  { sitio: "acp",      id: "7f43650f-5a93-42f7-a17e-dfc83aed3171" },
+};
+const GRUPO_CC_EDICION = "ERP-CC-Edicion";
+const CC_CATEGORIAS = ["Nómina directa","Nómina indirecta","CEO","Comisiones","Impuestos personales","Legales","Tecnología",
+  "Viajes y representación","Contabilidad","Alquiler","Bancos e impuestos filiales","Otros"];
+const CC_CONCEPTOS = ["Bruto","Complemento","Cargas sociales","SAC","Costo mensual","Honorarios CEO","Comisión devengada",
+  "Pago desde España","IRPF CEO","Mantenimiento SRL / SL / LLC","Microsoft 365","Dominio","MWC","Viaje comercial",
+  "Viajes adicionales","Estudio contable / gestoría","Oficina","Comisiones bancarias","Impuestos societarios"];
+const CC_AREAS = ["Delivery","Ingeniería","PM","Comercial","Preventa","Dirección"];
+const CC_MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const CC_CAMPOS = {
+  personas: ["Title","Email","Rol","Area","Filial","MonedaSueldo","FechaAlta","FechaBaja","HorasMes","Notas"],
+  escenarios: ["Title","Anio","Tipo","Version","Estado","Vigente","BasadoEnLookupId","MesDesde","MesHasta","FechaAprobacion","AprobadoPor",
+    "FacturacionUSD","VentaAdjudicadaUSD","HorasCargadas","Ocupacion","TC_ARS","TC_EUR","CargasSocialesPct","SACPct","AjusteSalarialPct","Notas"],
+  movimientos: ["Title","EscenarioLookupId","Anio","Mes","Categoria","Concepto","PersonaLookupId","Filial","Moneda","Monto","TipoCambio",
+    "MontoUSD","Origen","Fuente","Notas"],
+  parametros: ["Title","Anio","TipoDato","EscenarioOrigen","EstructuraTotalUSD","NominaDirectaUSD","EstructuraSinDirectaUSD","FacturacionUSD",
+    "VentaAdjudicadaUSD","HorasDisponibles","HorasCargadas","Ocupacion","CostoHoraUSD","CostoEmpresaPct","TasaEstructuraPct",
+    "FechaPublicacion","PublicadoPor","Notas"],
+};
+
+let ccPuedeEditar = null; // true/false según ERP-CC-Edicion; null = no se pudieron leer los grupos (se muestran los botones; SharePoint decide)
+const ccSiteIdCache = {};
+const cc = {
+  cargado: false, personas: [], escenarios: [], movimientos: [], parametros: null,
+  sub: "resumen", anio: null, escId: null, compId: "auto",
+  f: { mes: "", cat: "", persona: "", origen: "", texto: "" },
+};
+
+// ---- Acceso a Graph ----
+async function ccSiteId(sitio){
+  if(!ccSiteIdCache[sitio]){
+    const d = await graphFetch(`${GRAPH_V1}/sites/${CC_SITIOS[sitio]}?$select=id`);
+    ccSiteIdCache[sitio] = d.id;
+  }
+  return ccSiteIdCache[sitio];
+}
+async function ccRutaLista(lista){
+  return `/sites/${await ccSiteId(CC_LISTAS[lista].sitio)}/lists/${CC_LISTAS[lista].id}`;
+}
+async function ccListar(lista){
+  let url = `${GRAPH_V1}${await ccRutaLista(lista)}/items?$top=999&$expand=fields($select=${CC_CAMPOS[lista].join(",")})`;
+  const out = [];
+  while(url){
+    const d = await graphFetch(url);
+    (d.value || []).forEach(it => out.push({ ...it.fields, id: String(it.id) }));
+    url = d["@odata.nextLink"] || null;
+  }
+  return out;
+}
+const ccSinNulos = o => Object.fromEntries(Object.entries(o).filter(([,v]) => v !== null && v !== undefined && v !== ""));
+async function ccCrear(lista, campos){
+  const r = await graphFetch(`${GRAPH_V1}${await ccRutaLista(lista)}/items`, { method: "POST", body: JSON.stringify({ fields: ccSinNulos(campos) }) });
+  return String(r.id);
+}
+async function ccActualizar(lista, id, campos){
+  await graphFetch(`${GRAPH_V1}${await ccRutaLista(lista)}/items/${encodeURIComponent(id)}/fields`, { method: "PATCH", body: JSON.stringify(campos) });
+}
+async function ccBorrar(lista, id){
+  await graphFetch(`${GRAPH_V1}${await ccRutaLista(lista)}/items/${encodeURIComponent(id)}`, { method: "DELETE" }); // va a la papelera del sitio
+}
+// $batch de Graph (máx. 20 por llamada), con reintento de 429/503/504. reqs: [{method, url (relativa a /v1.0), body}]
+async function ccBatch(reqs, onProgreso){
+  let hechos = 0;
+  const errores = [];
+  for(let i = 0; i < reqs.length; i += 20){
+    let pendientes = reqs.slice(i, i + 20).map((r, k) => ({ ...r, id: String(i + k) }));
+    for(let intento = 0; pendientes.length && intento < 6; intento++){
+      const res = await graphFetch(`${GRAPH_V1}/$batch`, { method: "POST", body: JSON.stringify({
+        requests: pendientes.map(r => ({ id: r.id, method: r.method, url: r.url,
+          ...(r.body ? { body: r.body, headers: { "Content-Type": "application/json" } } : {}) })),
+      }) });
+      const reintentar = [];
+      let espera = 2;
+      (res.responses || []).forEach(resp => {
+        const r = pendientes.find(p => p.id === resp.id);
+        if(!r) return;
+        if(resp.status < 300) hechos++;
+        else if([429, 503, 504].includes(resp.status)){
+          reintentar.push(r);
+          espera = Math.max(espera, Number(resp.headers && resp.headers["Retry-After"]) || 2);
+        } else errores.push({ req: r, status: resp.status, msg: (resp.body && resp.body.error && resp.body.error.message) || "" });
+      });
+      pendientes = reintentar;
+      if(onProgreso) onProgreso(hechos, reqs.length);
+      if(pendientes.length) await new Promise(ok => setTimeout(ok, espera * 1000));
+    }
+    pendientes.forEach(r => errores.push({ req: r, status: 429, msg: "Sin respuesta después de varios reintentos" }));
+  }
+  return { hechos, errores };
+}
+
+// Al login: la pestaña se muestra solo si el usuario puede leer CC_Escenarios (sin grant o sin permiso → queda oculta).
+async function ccProbarAcceso(){
+  try{
+    await graphFetch(`${GRAPH_V1}${await ccRutaLista("escenarios")}/items?$top=1&$select=id`);
+    document.getElementById("tabCC").style.display = "";
+    ajustarAltoSolapas();
+  } catch(e){
+    console.info("Centro de costos: sin acceso a CC_Escenarios, la pestaña queda oculta.", e && e.message);
+  }
+}
+
+// ---- Utilidades ----
+const ccN = v => (v === null || v === undefined || v === "") ? null : Number(v);
+const ccR = (n, d = 2) => n == null || isNaN(n) ? null : Math.round(n * 10 ** d) / 10 ** d;
+const pad2 = n => String(n).padStart(2, "0");
+// Fechas "solo fecha" de SharePoint en UTC: medianoche local del sitio (03:00Z Buenos Aires, 22:00/23:00Z del día anterior Madrid)
+// o mediodía UTC (12:00Z, como las escribió la carga inicial). +6 h y cortar da el día correcto en todos esos casos.
+function ccFecha(v){
+  if(!v) return "";
+  const s = String(v);
+  if(s.length <= 10) return s;
+  const d = new Date(s);
+  return isNaN(d) ? s.slice(0, 10) : new Date(d.getTime() + 6 * 3600e3).toISOString().slice(0, 10);
+}
+function ccMonto(n, dec = 2){
+  return n == null || isNaN(n) ? "—" : Number(n).toLocaleString("es-AR", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function ccPct(x){ return x == null || isNaN(x) ? "—" : (x * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 }) + "%"; }
+function ccDelta(d){
+  if(d == null || isNaN(d)) return "—";
+  const cls = Math.abs(d) < 0.5 ? "zero" : d > 0 ? "pos" : "neg";
+  return `<span class="desvio ${cls}">${d > 0 ? "+" : ""}${usdA(d)}</span>`;
+}
+function ccOpts(lista, val, vacio){
+  return (vacio != null ? `<option value="">${escapeHtml(vacio)}</option>` : "") + lista.map(o => {
+    const [v, t] = Array.isArray(o) ? o : [o, o];
+    return `<option value="${escapeHtml(v)}" ${String(v) === String(val ?? "") ? "selected" : ""}>${escapeHtml(t)}</option>`;
+  }).join("");
+}
+const ccV = id => document.getElementById(id).value.trim();
+function ccNumIn(id){ const s = ccV(id); return s === "" ? null : Number(s); }
+function ccPctIn(id){ const n = ccNumIn(id); return n == null || isNaN(n) ? n : n / 100; }
+const ccPctVal = x => x == null || x === "" ? "" : ccR(Number(x) * 100, 4);
+function ccMsgError(e){
+  const s = String((e && e.message) || e);
+  if(/→ 403/.test(s)) return "SharePoint rechazó la operación: no tenés permiso de edición en esa lista.";
+  if(/→ 409/.test(s) || /duplicate|duplicad|único|unique/i.test(s)) return "Ya existe un elemento con ese nombre (tiene que ser único).";
+  return s.slice(0, 260);
+}
+function ccError(e){ console.error(e); mostrarToast("⚠ " + ccMsgError(e)); }
+function ccQuien(){ return cuentaActual ? (cuentaActual.name || cuentaActual.username || "") : ""; }
+
+function ccEsc(id){ return id == null ? null : cc.escenarios.find(e => e.id === String(id)) || null; }
+function ccPersona(id){ return id == null || id === "" ? null : cc.personas.find(p => p.id === String(id)) || null; }
+function ccMovsDe(escId){ return cc.movimientos.filter(m => String(m.EscenarioLookupId) === String(escId)); }
+const ccEsPresupuesto = e => /^Presupuesto/.test((e && e.Tipo) || "");
+function ccEscenariosDe(anio){
+  return cc.escenarios.filter(e => ccN(e.Anio) === anio)
+    .sort((a, b) => (a.Tipo === "Real" ? -1 : 0) - (b.Tipo === "Real" ? -1 : 0) || (ccN(a.Version) || 0) - (ccN(b.Version) || 0));
+}
+function ccAnios(){ return [...new Set(cc.escenarios.map(e => ccN(e.Anio)).filter(a => a != null))].sort((a, b) => b - a); }
+function ccMesesDe(e){
+  const d = ccN(e.MesDesde) || 1, h = ccN(e.MesHasta) || 12, r = [];
+  for(let m = d; m <= h; m++) r.push(m);
+  return r;
+}
+const ccEditableMovs = e => !!e && e.Estado === "Borrador" && ccPuedeEditar !== false;
+function ccTotales(escId){
+  const porCat = {}, porMes = {};
+  let total = 0, n = 0;
+  ccMovsDe(escId).forEach(m => {
+    const u = Number(m.MontoUSD) || 0, c = m.Categoria || "Otros", mes = ccN(m.Mes);
+    porCat[c] = porCat[c] || { total: 0, mes: {} };
+    porCat[c].total += u;
+    porCat[c].mes[mes] = (porCat[c].mes[mes] || 0) + u;
+    porMes[mes] = (porMes[mes] || 0) + u;
+    total += u; n++;
+  });
+  const directa = porCat["Nómina directa"] ? porCat["Nómina directa"].total : 0;
+  return { porCat, porMes, total, directa, sinDirecta: total - directa, n };
+}
+function ccComparacion(e){
+  if(!e || cc.compId === "") return null;
+  if(cc.compId !== "auto"){ const c = ccEsc(cc.compId); return c && c.id !== e.id ? c : null; }
+  if(e.Tipo !== "Real") return null;
+  return cc.escenarios.find(x => ccN(x.Anio) === ccN(e.Anio) && ccEsPresupuesto(x) && x.Vigente) || null;
+}
+function ccAsegurarSeleccion(){
+  const anios = ccAnios();
+  if(!anios.includes(cc.anio)){
+    const actual = new Date().getFullYear();
+    cc.anio = anios.includes(actual) ? actual : (anios[0] ?? null);
+  }
+  const delAnio = ccEscenariosDe(cc.anio);
+  if(!delAnio.some(e => e.id === cc.escId)) cc.escId = (delAnio.find(e => e.Tipo === "Real") || delAnio[0] || {}).id || null;
+  return anios;
+}
+
+// ---- Carga y render general ----
+async function ccCargar(){
+  const [escenarios, personas, movimientos, parametros] = await Promise.all([
+    ccListar("escenarios"), ccListar("personas"), ccListar("movimientos"),
+    ccListar("parametros").catch(e => { console.warn("CC_Parametros (sitio ACP) no accesible:", e); return null; }),
+  ]);
+  Object.assign(cc, { escenarios, personas, movimientos, parametros, cargado: true });
+}
+async function abrirCentroCostos(){
+  if(!cc.cargado){
+    renderCC();
+    try{ await ccCargar(); }
+    catch(e){
+      console.error(e);
+      document.getElementById("vistaCC").innerHTML = `<div class="panel" style="color:var(--danger)">No se pudo leer el centro de costos: ${escapeHtml(ccMsgError(e))}</div>`;
+      return;
+    }
+  }
+  renderCC();
+}
+function ccRecargar(){ cc.cargado = false; return abrirCentroCostos(); }
+function ccCambiarSub(sub){ cc.sub = sub; renderCC(); }
+function ccSetAnio(v){ cc.anio = Number(v); cc.escId = null; cc.compId = "auto"; renderCC(); }
+function ccSetEsc(v){ cc.escId = v; cc.compId = "auto"; renderCC(); }
+function ccSetComp(v){ cc.compId = v; renderCC(); }
+function ccIrA(escId, sub){
+  const e = ccEsc(escId);
+  if(e){ cc.anio = ccN(e.Anio); cc.escId = e.id; cc.compId = "auto"; }
+  cc.sub = sub; renderCC();
+}
+
+function renderCC(){
+  document.querySelectorAll("#ccSubtabs .substat-btn").forEach(b => b.classList.toggle("active", b.dataset.cc === cc.sub));
+  const cont = document.getElementById("vistaCC");
+  if(!cc.cargado){ cont.innerHTML = `<div class="panel">Cargando centro de costos…</div>`; return; }
+  let h = ccPuedeEditar === false ? `<div class="cc-aviso">🔒 Solo lectura: no estás en el grupo ${escapeHtml(GRUPO_CC_EDICION)}.</div>` : "";
+  if(["resumen", "movimientos", "publicar"].includes(cc.sub)) h += ccHtmlBarra();
+  h += ({ resumen: ccHtmlResumen, movimientos: ccHtmlMovimientos, personas: ccHtmlPersonas,
+          escenarios: ccHtmlEscenarios, publicar: ccHtmlPublicar }[cc.sub])();
+  cont.innerHTML = h;
+  if(cc.sub === "publicar") ccRecalcularPublicar();
+}
+
+function ccHtmlBarra(){
+  const anios = ccAsegurarSeleccion();
+  let h = `<div class="cc-barra">
+    <label>Año <select onchange="ccSetAnio(this.value)">${ccOpts(anios, cc.anio)}</select></label>
+    <label>Escenario <select onchange="ccSetEsc(this.value)">${ccOpts(ccEscenariosDe(cc.anio).map(e => [e.id, `${e.Title} · ${e.Estado}${e.Vigente ? " ⭐" : ""}`]), cc.escId)}</select></label>`;
+  if(cc.sub === "resumen"){
+    const otros = [...cc.escenarios].sort((a, b) => ccN(b.Anio) - ccN(a.Anio)).filter(e => e.id !== cc.escId).map(e => [e.id, e.Title]);
+    h += `<label>Comparar contra <select onchange="ccSetComp(this.value)">${ccOpts([["auto", "Presupuesto vigente (auto)"], ["", "Sin comparación"], ...otros], cc.compId)}</select></label>`;
+  }
+  return h + `<button class="btn-mini" style="margin-left:auto" onclick="ccRecargar()">↻ Recargar</button></div>`;
+}
+
+// ---- 1. Resumen ----
+function ccHtmlResumen(){
+  const e = ccEsc(cc.escId);
+  if(!e) return `<div class="panel">No hay escenarios cargados.</div>`;
+  const t = ccTotales(e.id), comp = ccComparacion(e), tc = comp ? ccTotales(comp.id) : null;
+  const meses = ccMesesDe(e), fact = ccN(e.FacturacionUSD);
+  const tile = (num, lbl, sub, color) => `<div class="stat-tile"><div class="num" ${color ? `style="color:${color}"` : ""}>${num}</div><div class="lbl">${lbl}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+  const delta = tc ? t.total - tc.total : null;
+  let h = `<div class="grid-stats">
+    ${tile(usdA(t.total), "Estructura total (USD)", `${t.n} movimientos · ${CC_MESES[meses[0] - 1]}–${CC_MESES[meses[meses.length - 1] - 1]}`)}
+    ${tile(usdA(t.directa), "Nómina directa (USD)", t.total ? ccPct(t.directa / t.total) + " del total" : "")}
+    ${tile(usdA(t.sinDirecta), "Estructura sin nómina directa", fact ? ccPct(t.sinDirecta / fact) + " de la facturación" : "sin facturación cargada")}
+    ${tc ? tile((delta > 0 ? "+" : "") + usdA(delta), "Δ vs " + escapeHtml(comp.Title), tc.total ? ccPct(delta / tc.total) : "", delta > 0.5 ? "var(--danger)" : "var(--ok)")
+         : tile("—", "Sin comparación", e.Tipo === "Real" ? "no hay presupuesto vigente para este año" : "")}
+  </div>`;
+  const cats = [...CC_CATEGORIAS, ...Object.keys(t.porCat), ...(tc ? Object.keys(tc.porCat) : [])]
+    .filter((c, i, a) => a.indexOf(c) === i && (t.porCat[c] || (tc && tc.porCat[c])));
+  const celda = v => `<td class="n">${v ? usdA(v) : '<span style="color:var(--gris)">—</span>'}</td>`;
+  let filas = cats.map(c => {
+    const pc = t.porCat[c] || { total: 0, mes: {} }, pcc = tc && (tc.porCat[c] || { total: 0 });
+    return `<tr><td>${escapeHtml(c)}</td>${meses.map(m => celda(pc.mes[m])).join("")}<td class="n"><strong>${usdA(pc.total)}</strong></td>
+      ${tc ? `<td class="n">${usdA(pcc.total)}</td><td class="n">${ccDelta(pc.total - pcc.total)}</td>` : ""}</tr>`;
+  }).join("");
+  filas += `<tr class="cc-tot"><td>Total</td>${meses.map(m => celda(t.porMes[m])).join("")}<td class="n">${usdA(t.total)}</td>
+    ${tc ? `<td class="n">${usdA(tc.total)}</td><td class="n">${ccDelta(t.total - tc.total)}</td>` : ""}</tr>`;
+  if(tc){
+    filas += `<tr class="cc-sub"><td>${escapeHtml(comp.Title)}</td>${meses.map(m => celda(tc.porMes[m])).join("")}<td></td><td></td><td></td></tr>
+      <tr class="cc-sub"><td>Δ</td>${meses.map(m => `<td class="n">${ccDelta((t.porMes[m] || 0) - (tc.porMes[m] || 0))}</td>`).join("")}<td></td><td></td><td></td></tr>`;
+  }
+  h += `<div class="panel"><h3>${escapeHtml(e.Title)} — USD por categoría y mes</h3><div class="cc-scroll"><table class="simple">
+    <thead><tr><th>Categoría</th>${meses.map(m => `<th class="n">${CC_MESES[m - 1]}</th>`).join("")}<th class="n">Total</th>
+    ${tc ? `<th class="n">${escapeHtml(comp.Title)}</th><th class="n">Δ</th>` : ""}</tr></thead><tbody>${filas}</tbody></table></div>
+    <div class="motivo-chip" style="max-width:none;margin-top:10px;">Montos devengados en USD (Monto USD de cada movimiento). Δ positivo = gasto por encima de la comparación.</div></div>`;
+  return h;
+}
+
+// ---- 2. Movimientos ----
+function ccHtmlMovimientos(){
+  const e = ccEsc(cc.escId);
+  if(!e) return `<div class="panel">No hay escenarios cargados.</div>`;
+  const movs = ccMovsDe(e.id);
+  const personas = [...new Set(movs.map(m => m.PersonaLookupId).filter(Boolean).map(String))]
+    .map(id => [id, (ccPersona(id) || {}).Title || `#${id}`]).sort((a, b) => a[1].localeCompare(b[1], "es"));
+  const f = cc.f;
+  const sel = (k, opts, vacio) => `<select onchange="ccFiltrarMovs('${k}', this.value)">${ccOpts(opts, f[k], vacio)}</select>`;
+  let h = `<div class="cc-barra">
+    ${sel("mes", ccMesesDe(e).map(m => [m, CC_MESES[m - 1]]), "Todos los meses")}
+    ${sel("cat", CC_CATEGORIAS, "Todas las categorías")}
+    ${sel("persona", [["__sin", "(sin persona)"], ...personas], "Todas las personas")}
+    ${sel("origen", ["Confirmado", "Estimado", "Reconstruido"], "Todo origen")}
+    <input type="text" placeholder="Buscar concepto, fuente, notas…" value="${escapeHtml(f.texto)}" oninput="ccFiltrarMovs('texto', this.value)" style="min-width:200px;">
+    ${ccEditableMovs(e) ? `<button class="btn btn-primario" style="margin-left:auto" onclick="ccModalMov()">➕ Nuevo movimiento</button>` : ""}
+  </div>`;
+  if(e.Estado !== "Borrador") h += `<div class="cc-aviso">🔒 Escenario ${escapeHtml(e.Estado)}: solo lectura. Para cambiarlo, copialo como presupuesto nuevo desde Escenarios.</div>`;
+  return h + `<div class="panel" id="ccMovsTabla">${ccHtmlTablaMovs()}</div>`;
+}
+function ccFiltrarMovs(k, v){
+  cc.f[k] = v;
+  const t = document.getElementById("ccMovsTabla");
+  if(t) t.innerHTML = ccHtmlTablaMovs();
+}
+function ccHtmlTablaMovs(){
+  const e = ccEsc(cc.escId), f = cc.f, editable = ccEditableMovs(e);
+  const txt = f.texto.toLowerCase();
+  const ordenCat = c => { const i = CC_CATEGORIAS.indexOf(c); return i < 0 ? 99 : i; };
+  const movs = ccMovsDe(e.id).filter(m =>
+    (!f.mes || String(m.Mes) === f.mes) && (!f.cat || m.Categoria === f.cat) && (!f.origen || m.Origen === f.origen) &&
+    (!f.persona || (f.persona === "__sin" ? !m.PersonaLookupId : String(m.PersonaLookupId) === f.persona)) &&
+    (!txt || [m.Title, m.Concepto, m.Fuente, m.Notas].some(s => String(s || "").toLowerCase().includes(txt)))
+  ).sort((a, b) => ccN(a.Mes) - ccN(b.Mes) || ordenCat(a.Categoria) - ordenCat(b.Categoria) ||
+    String((ccPersona(a.PersonaLookupId) || {}).Title || "").localeCompare(String((ccPersona(b.PersonaLookupId) || {}).Title || ""), "es") ||
+    String(a.Concepto || "").localeCompare(String(b.Concepto || ""), "es"));
+  const total = movs.reduce((s, m) => s + (Number(m.MontoUSD) || 0), 0);
+  if(!movs.length) return `<div style="color:var(--gris);font-size:13px;">Sin movimientos con esos filtros.</div>`;
+  return `<h3>${movs.length} movimientos · ${usdA(total)}</h3><div class="cc-scroll"><table class="simple"><thead><tr>
+    <th>Mes</th><th>Categoría</th><th>Concepto</th><th>Persona</th><th>Filial</th><th class="n">Monto</th><th class="n">TC</th><th class="n">USD</th><th>Origen</th><th>Fuente</th>${editable ? "<th></th>" : ""}
+  </tr></thead><tbody>${movs.map(m => {
+    const p = ccPersona(m.PersonaLookupId), id = escapeHtml(m.id);
+    return `<tr><td>${CC_MESES[ccN(m.Mes) - 1] || escapeHtml(m.Mes)}</td><td>${escapeHtml(m.Categoria)}</td>
+      <td>${escapeHtml(m.Concepto) || "—"}${m.Notas ? `<span class="motivo-chip">${escapeHtml(String(m.Notas).slice(0, 160))}</span>` : ""}</td>
+      <td>${p ? escapeHtml(p.Title) : "—"}</td><td>${escapeHtml(m.Filial) || "—"}</td>
+      <td class="n">${escapeHtml(m.Moneda)} ${ccMonto(ccN(m.Monto))}</td><td class="n">${ccMonto(ccN(m.TipoCambio), m.Moneda === "EUR" ? 4 : 2)}</td>
+      <td class="n"><strong>${ccMonto(ccN(m.MontoUSD))}</strong></td><td>${escapeHtml(m.Origen)}</td><td>${escapeHtml(m.Fuente) || "—"}</td>
+      ${editable ? `<td><div class="acciones-hito"><button class="btn-mini" onclick="ccModalMov('${id}')">✏️</button><button class="btn-mini" onclick="ccBorrarMov('${id}')">🗑</button></div></td>` : ""}</tr>`;
+  }).join("")}</tbody></table></div>`;
+}
+
+// Modal genérico del módulo
+function ccAbrirModal(html, ancho){
+  const m = document.getElementById("ccModal");
+  m.style.width = ancho || "";
+  m.innerHTML = html;
+  abrirModal("overlayCC");
+}
+const ccHeadModal = (titulo, desc) => `<div class="modal-header"><div><h3>${titulo}</h3><div class="desc">${desc || ""}</div></div>
+  <button class="modal-close" onclick="cerrarModal('overlayCC')">×</button></div><div style="height:14px"></div>`;
+const ccPieModal = (accion, etiqueta) => `<div class="error-campo" id="ccErr"></div><div class="modal-actions">
+  <button class="btn btn-secundario" onclick="cerrarModal('overlayCC')">Cancelar</button>
+  <button class="btn btn-primario" id="ccBtnOk" onclick="${accion}">${etiqueta || "Guardar"}</button></div>`;
+function ccErrModal(msg){ const el = document.getElementById("ccErr"); el.textContent = msg; el.classList.add("show"); }
+async function ccEjecutarModal(fn){
+  const btn = document.getElementById("ccBtnOk");
+  btn.disabled = true;
+  try{ await fn(); }
+  catch(e){ console.error(e); ccErrModal(ccMsgError(e)); }
+  finally{ if(document.getElementById("ccBtnOk")) document.getElementById("ccBtnOk").disabled = false; }
+}
+function ccTituloMov(anio, mes, cat, persona, concepto){
+  return [`${anio}-${pad2(mes)}`, cat, persona, concepto].filter(Boolean).join(" · ").slice(0, 255);
+}
+
+function ccModalMov(id){
+  const e = ccEsc(cc.escId);
+  if(!ccEditableMovs(e)) return;
+  const m = id ? cc.movimientos.find(x => x.id === id) : null;
+  const v = m || { Mes: Number(cc.f.mes) || ccMesesDe(e)[0], Categoria: cc.f.cat || "", Moneda: "USD", TipoCambio: 1,
+                   Origen: e.Tipo === "Real" ? "Confirmado" : "Estimado" };
+  const tc = ccN(v.TipoCambio), monto = ccN(v.Monto), usd = ccN(v.MontoUSD);
+  const manual = !!m && (!tc || Math.abs(monto / tc - usd) > 0.01);
+  const conceptos = [...new Set([...CC_CONCEPTOS, ...cc.movimientos.map(x => x.Concepto).filter(Boolean)])];
+  const personas = [...cc.personas].sort((a, b) => String(a.Title).localeCompare(String(b.Title), "es")).map(p => [p.id, p.Title]);
+  ccAbrirModal(`${ccHeadModal(m ? "Editar movimiento" : "Nuevo movimiento", escapeHtml(e.Title))}
+    <div class="campo-2"><div class="campo"><label>Mes</label><select id="ccMvMes">${ccOpts(ccMesesDe(e).map(x => [x, CC_MESES[x - 1]]), v.Mes)}</select></div>
+      <div class="campo"><label>Categoría</label><select id="ccMvCat">${ccOpts(CC_CATEGORIAS, v.Categoria, "—")}</select></div></div>
+    <div class="campo"><label>Concepto</label><input id="ccMvConcepto" list="ccDlConceptos" value="${escapeHtml(v.Concepto || "")}">
+      <datalist id="ccDlConceptos">${conceptos.map(c => `<option value="${escapeHtml(c)}">`).join("")}</datalist></div>
+    <div class="campo-2"><div class="campo"><label>Persona</label><select id="ccMvPersona" onchange="ccMvPersona()">${ccOpts(personas, v.PersonaLookupId, "— (sin persona)")}</select></div>
+      <div class="campo"><label>Filial</label><select id="ccMvFilial">${ccOpts(["AR", "ES", "US"], v.Filial, "—")}</select></div></div>
+    <div class="campo-2"><div class="campo"><label>Moneda</label><select id="ccMvMoneda" onchange="ccMvMoneda()">${ccOpts(["ARS", "EUR", "USD"], v.Moneda)}</select></div>
+      <div class="campo"><label>Origen</label><select id="ccMvOrigen">${ccOpts(["Confirmado", "Estimado", "Reconstruido"], v.Origen)}</select></div></div>
+    <div class="campo-2"><div class="campo"><label>Monto (moneda de origen)</label><input type="number" step="any" id="ccMvMonto" value="${monto ?? ""}" oninput="ccMvCalc()"></div>
+      <div class="campo"><label>Tipo de cambio</label><input type="number" step="any" id="ccMvTC" value="${tc ?? ""}" oninput="ccMvCalc()"><div class="hint">Unidades de la moneda por 1 USD</div></div></div>
+    <div class="campo"><label>Monto USD</label><input type="number" step="any" id="ccMvUSD" value="${usd ?? ""}" ${manual ? "" : "readonly"}>
+      <label class="hint" style="display:flex;gap:6px;align-items:center;font-weight:400;"><input type="checkbox" id="ccMvManual" ${manual ? "checked" : ""} onchange="ccMvCalc()" style="width:auto;"> Ingresar USD a mano (USD realmente pagados)</label></div>
+    <div class="campo"><label>Fuente</label><input id="ccMvFuente" value="${escapeHtml(v.Fuente || "")}" placeholder="Ej.: recibo, transferencia, contabilidad"></div>
+    <div class="campo"><label>Notas</label><textarea id="ccMvNotas">${escapeHtml(v.Notas || "")}</textarea></div>
+    ${ccPieModal(`ccGuardarMov(${m ? `'${escapeHtml(m.id)}'` : "null"})`)}`, "520px");
+  ccMvCalc();
+}
+function ccMvCalc(){
+  const manual = document.getElementById("ccMvManual").checked, usd = document.getElementById("ccMvUSD");
+  usd.readOnly = !manual;
+  if(manual) return;
+  const monto = ccNumIn("ccMvMonto"), tc = ccNumIn("ccMvTC");
+  usd.value = monto != null && tc ? ccR(monto / tc) : "";
+}
+function ccMvMoneda(){
+  const e = ccEsc(cc.escId), mon = ccV("ccMvMoneda");
+  const tc = mon === "USD" ? 1 : mon === "ARS" ? ccN(e.TC_ARS) : ccN(e.TC_EUR);
+  document.getElementById("ccMvTC").value = tc ?? "";
+  ccMvCalc();
+}
+function ccMvPersona(){
+  const p = ccPersona(ccV("ccMvPersona"));
+  if(!p) return;
+  if(p.Filial) document.getElementById("ccMvFilial").value = p.Filial;
+  if(p.MonedaSueldo && p.MonedaSueldo !== ccV("ccMvMoneda")){ document.getElementById("ccMvMoneda").value = p.MonedaSueldo; ccMvMoneda(); }
+}
+function ccGuardarMov(id){
+  return ccEjecutarModal(async () => {
+    const e = ccEsc(cc.escId), m = id ? cc.movimientos.find(x => x.id === id) : null;
+    const mes = Number(ccV("ccMvMes")), cat = ccV("ccMvCat"), concepto = ccV("ccMvConcepto"), personaId = ccV("ccMvPersona");
+    const monto = ccNumIn("ccMvMonto"), tc = ccNumIn("ccMvTC"), usd = ccNumIn("ccMvUSD");
+    if(!cat) return ccErrModal("Elegí la categoría.");
+    if(monto == null || isNaN(monto)) return ccErrModal("Cargá el monto.");
+    if(usd == null || isNaN(usd)) return ccErrModal("Falta el monto USD: cargá el tipo de cambio o ingresalo a mano.");
+    const persona = ccPersona(personaId);
+    const campos = {
+      Title: ccTituloMov(e.Anio, mes, cat, persona && persona.Title, concepto),
+      EscenarioLookupId: String(e.id), Anio: Number(e.Anio), Mes: mes, Categoria: cat, Concepto: concepto || null,
+      Filial: ccV("ccMvFilial") || null, Moneda: ccV("ccMvMoneda"), Monto: monto, TipoCambio: tc, MontoUSD: ccR(usd),
+      Origen: ccV("ccMvOrigen"), Fuente: ccV("ccMvFuente") || null, Notas: ccV("ccMvNotas") || null,
+    };
+    if(personaId) campos.PersonaLookupId = String(personaId);
+    else if(m && m.PersonaLookupId) campos.PersonaLookupId = null;
+    if(m){ await ccActualizar("movimientos", m.id, campos); Object.assign(m, campos); }
+    else cc.movimientos.push({ ...campos, id: await ccCrear("movimientos", campos) });
+    cerrarModal("overlayCC");
+    mostrarToast(m ? "Movimiento actualizado" : "Movimiento agregado");
+    renderCC();
+  });
+}
+async function ccBorrarMov(id){
+  const m = cc.movimientos.find(x => x.id === id);
+  if(!m || !confirm(`¿Borrar el movimiento "${m.Title}"? Va a la papelera del sitio.`)) return;
+  try{
+    await ccBorrar("movimientos", id);
+    cc.movimientos = cc.movimientos.filter(x => x.id !== id);
+    mostrarToast("Movimiento borrado");
+    renderCC();
+  } catch(e){ ccError(e); }
+}
+
+// ---- 3. Personas ----
+function ccEstadoPersona(p){
+  const b = ccFecha(p.FechaBaja);
+  if(!b) return `<span class="cc-chip Activa">Activa</span>`;
+  return b <= HOY_ISO ? `<span class="cc-chip Baja">Baja</span>` : `<span class="cc-chip Borrador">Baja el ${fmt(b)}</span>`;
+}
+function ccHtmlPersonas(){
+  const puede = ccPuedeEditar !== false;
+  const lista = [...cc.personas].sort((a, b) => (!!ccFecha(a.FechaBaja)) - (!!ccFecha(b.FechaBaja)) || String(a.Title).localeCompare(String(b.Title), "es"));
+  return `<div class="cc-barra">${puede ? `<button class="btn btn-primario" onclick="ccModalPersona()">➕ Nueva persona</button>` : ""}
+    <span>Las bajas no se borran: se carga la fecha de baja. Directo = carga horas a proyectos (entra en las horas disponibles).</span>
+    <button class="btn-mini" style="margin-left:auto" onclick="ccRecargar()">↻ Recargar</button></div>
+    <div class="panel"><div class="cc-scroll"><table class="simple"><thead><tr><th>Persona</th><th>Rol</th><th>Área</th><th>Filial</th><th>Moneda</th>
+    <th>Alta</th><th>Baja</th><th class="n">Horas/mes</th><th>Estado</th><th>Email</th>${puede ? "<th></th>" : ""}</tr></thead><tbody>
+    ${lista.map(p => { const id = escapeHtml(p.id); return `<tr><td><strong>${escapeHtml(p.Title)}</strong>${p.Notas ? `<span class="motivo-chip">${escapeHtml(String(p.Notas).slice(0, 160))}</span>` : ""}</td>
+      <td>${escapeHtml(p.Rol) || "—"}</td><td>${escapeHtml(p.Area) || "—"}</td><td>${escapeHtml(p.Filial) || "—"}</td><td>${escapeHtml(p.MonedaSueldo) || "—"}</td>
+      <td>${fmt(ccFecha(p.FechaAlta) || null)}</td><td>${fmt(ccFecha(p.FechaBaja) || null)}</td><td class="n">${ccN(p.HorasMes) ?? "—"}</td>
+      <td>${ccEstadoPersona(p)}</td><td>${escapeHtml(p.Email) || "—"}</td>
+      ${puede ? `<td><div class="acciones-hito"><button class="btn-mini" onclick="ccModalPersona('${id}')">✏️ Editar</button>${!ccFecha(p.FechaBaja) ? `<button class="btn-mini" onclick="ccModalBaja('${id}')">Dar de baja</button>` : ""}</div></td>` : ""}</tr>`; }).join("")
+      || `<tr><td colspan="11" style="color:var(--gris)">Sin personas cargadas.</td></tr>`}
+    </tbody></table></div></div>`;
+}
+function ccModalPersona(id){
+  const p = id ? ccPersona(id) : null, v = p || { Rol: "Directo", HorasMes: 160 };
+  ccAbrirModal(`${ccHeadModal(p ? "Editar persona" : "Nueva persona", "CC_Personas (confidencial)")}
+    <div class="campo"><label>Persona (nombre y apellido)</label><input id="ccPeNombre" value="${escapeHtml(v.Title || "")}"></div>
+    <div class="campo"><label>Email</label><input id="ccPeEmail" value="${escapeHtml(v.Email || "")}"></div>
+    <div class="campo-2"><div class="campo"><label>Rol</label><select id="ccPeRol">${ccOpts(["Directo", "Indirecto", "CEO"], v.Rol)}</select></div>
+      <div class="campo"><label>Área</label><input id="ccPeArea" list="ccDlAreas" value="${escapeHtml(v.Area || "")}"><datalist id="ccDlAreas">${CC_AREAS.map(a => `<option value="${escapeHtml(a)}">`).join("")}</datalist></div></div>
+    <div class="campo-2"><div class="campo"><label>Filial</label><select id="ccPeFilial">${ccOpts(["AR", "ES", "US"], v.Filial, "—")}</select></div>
+      <div class="campo"><label>Moneda del sueldo</label><select id="ccPeMoneda">${ccOpts(["ARS", "EUR", "USD"], v.MonedaSueldo, "—")}</select></div></div>
+    <div class="campo-2"><div class="campo"><label>Fecha de alta</label><input type="date" id="ccPeAlta" value="${escapeHtml(ccFecha(v.FechaAlta))}"></div>
+      <div class="campo"><label>Fecha de baja</label><input type="date" id="ccPeBaja" value="${escapeHtml(ccFecha(v.FechaBaja))}"><div class="hint">Vacía = activa</div></div></div>
+    <div class="campo"><label>Horas por mes</label><input type="number" id="ccPeHoras" value="${ccN(v.HorasMes) ?? 160}"></div>
+    <div class="campo"><label>Notas</label><textarea id="ccPeNotas">${escapeHtml(v.Notas || "")}</textarea></div>
+    ${ccPieModal(`ccGuardarPersona(${p ? `'${escapeHtml(p.id)}'` : "null"})`)}`);
+}
+function ccGuardarPersona(id){
+  return ccEjecutarModal(async () => {
+    const p = id ? ccPersona(id) : null, nombre = ccV("ccPeNombre");
+    if(!nombre) return ccErrModal("Cargá el nombre.");
+    if(cc.personas.some(x => x.id !== id && String(x.Title).trim().toLowerCase() === nombre.toLowerCase())) return ccErrModal("Ya hay una persona con ese nombre.");
+    const campos = { Title: nombre, Email: ccV("ccPeEmail") || null, Rol: ccV("ccPeRol"), Area: ccV("ccPeArea") || null,
+      Filial: ccV("ccPeFilial") || null, MonedaSueldo: ccV("ccPeMoneda") || null, FechaAlta: ccV("ccPeAlta") || null,
+      FechaBaja: ccV("ccPeBaja") || null, HorasMes: ccNumIn("ccPeHoras"), Notas: ccV("ccPeNotas") || null };
+    if(p){ await ccActualizar("personas", p.id, campos); Object.assign(p, campos); }
+    else cc.personas.push({ ...campos, id: await ccCrear("personas", campos) });
+    cerrarModal("overlayCC");
+    mostrarToast(p ? "Persona actualizada" : "Persona agregada");
+    renderCC();
+  });
+}
+function ccModalBaja(id){
+  const p = ccPersona(id);
+  ccAbrirModal(`${ccHeadModal("Dar de baja", escapeHtml(p.Title))}
+    <div class="campo"><label>Fecha de baja</label><input type="date" id="ccBjFecha" value="${HOY_ISO}"><div class="hint">No se borra: queda en los escenarios donde tiene movimientos.</div></div>
+    ${ccPieModal(`ccGuardarBaja('${escapeHtml(p.id)}')`, "Dar de baja")}`);
+}
+function ccGuardarBaja(id){
+  return ccEjecutarModal(async () => {
+    const f = ccV("ccBjFecha");
+    if(!f) return ccErrModal("Elegí la fecha.");
+    await ccActualizar("personas", id, { FechaBaja: f });
+    ccPersona(id).FechaBaja = f;
+    cerrarModal("overlayCC");
+    mostrarToast("Baja registrada");
+    renderCC();
+  });
+}
+
+// ---- 4. Escenarios ----
+function ccProximaVersion(anio){
+  return Math.max(0, ...cc.escenarios.filter(e => ccN(e.Anio) === anio && ccEsPresupuesto(e)).map(e => ccN(e.Version) || 0)) + 1;
+}
+function ccHtmlEscenarios(){
+  const puede = ccPuedeEditar !== false;
+  const btn = (txt, js) => `<button class="btn-mini" onclick="${js}">${txt}</button>`;
+  let h = `<div class="cc-barra">${puede ? `<button class="btn btn-primario" onclick="ccModalEscenario()">➕ Nuevo escenario</button>` : ""}
+    <span>Real: se edita en Borrador y se cierra al terminar el año. Presupuesto: Borrador → Aprobado → Cerrado; uno por año es el vigente (⭐).</span>
+    <button class="btn-mini" style="margin-left:auto" onclick="ccRecargar()">↻ Recargar</button></div>`;
+  ccAnios().forEach(a => {
+    h += `<h3 class="cc-anio">${a}</h3><div class="panel"><div class="cc-scroll"><table class="simple"><thead><tr><th>Escenario</th><th>Tipo</th><th>Estado</th><th>Meses</th>
+      <th class="n">Movs.</th><th class="n">Total USD</th><th>Basado en</th><th>Aprobación</th><th></th></tr></thead><tbody>`;
+    h += ccEscenariosDe(a).map(e => {
+      const t = ccTotales(e.id), base = ccEsc(e.BasadoEnLookupId), id = escapeHtml(e.id), meses = ccMesesDe(e);
+      const acc = [];
+      if(puede){
+        if(e.Estado === "Borrador") acc.push(btn("✏️ Editar", `ccModalEscenario('${id}')`));
+        if(e.Estado === "Borrador" && ccEsPresupuesto(e)) acc.push(btn("✔ Aprobar", `ccCambiarEstado('${id}','Aprobado')`));
+        if(e.Estado !== "Cerrado" && (e.Tipo === "Real" || e.Estado === "Aprobado")) acc.push(btn("🔒 Cerrar", `ccCambiarEstado('${id}','Cerrado')`));
+        if(ccEsPresupuesto(e) && !e.Vigente) acc.push(btn("⭐ Vigente", `ccMarcarVigente('${id}')`));
+        acc.push(btn("⧉ Copiar como presupuesto", `ccModalCopiar('${id}')`));
+        if(e.Estado === "Borrador") acc.push(btn("🗑 Eliminar", `ccModalEliminarEsc('${id}')`));
+      }
+      acc.push(btn("Ver resumen", `ccIrA('${id}','resumen')`));
+      return `<tr><td><strong>${escapeHtml(e.Title)}</strong>${e.Vigente ? ' <span title="Presupuesto vigente">⭐</span>' : ""}${e.Notas ? `<span class="motivo-chip">${escapeHtml(String(e.Notas).slice(0, 160))}</span>` : ""}</td>
+        <td>${escapeHtml(e.Tipo)}</td><td><span class="cc-chip ${escapeHtml(e.Estado)}">${escapeHtml(e.Estado)}</span></td>
+        <td>${CC_MESES[meses[0] - 1]}–${CC_MESES[meses[meses.length - 1] - 1]}</td><td class="n">${t.n}</td><td class="n">${usdA(t.total)}</td>
+        <td>${base ? escapeHtml(base.Title) : "—"}</td><td>${e.FechaAprobacion ? `${fmt(ccFecha(e.FechaAprobacion))}${e.AprobadoPor ? " · " + escapeHtml(e.AprobadoPor) : ""}` : "—"}</td>
+        <td><div class="acciones-hito">${acc.join("")}</div></td></tr>`;
+    }).join("");
+    h += `</tbody></table></div></div>`;
+  });
+  return h || `<div class="panel">No hay escenarios.</div>`;
+}
+function ccModalEscenario(id){
+  const e = id ? ccEsc(id) : null;
+  const ref = [...cc.escenarios].sort((a, b) => ccN(b.Anio) - ccN(a.Anio))[0] || {};
+  const v = e || { Anio: new Date().getFullYear() + 1, Tipo: "Presupuesto", MesDesde: 1, MesHasta: 12, TC_ARS: ref.TC_ARS, TC_EUR: ref.TC_EUR,
+                   CargasSocialesPct: ref.CargasSocialesPct, SACPct: ref.SACPct };
+  const num = (idc, lbl, val, hint) => `<div class="campo"><label>${lbl}</label><input type="number" step="any" id="${idc}" value="${val ?? ""}">${hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
+  const mesesOpts = CC_MESES.map((m, i) => [i + 1, m]);
+  ccAbrirModal(`${ccHeadModal(e ? "Editar escenario" : "Nuevo escenario", e ? `${escapeHtml(e.Title)} · ${escapeHtml(e.Tipo)}` : "Vacío: para partir de otro escenario usá “Copiar como presupuesto”.")}
+    ${e ? "" : `<div class="campo-2">${num("ccEsAnio", "Año", v.Anio)}
+      <div class="campo"><label>Tipo</label><select id="ccEsTipo" onchange="ccEsAuto()">${ccOpts(["Real", "Presupuesto", "Presupuesto retroactivo"], v.Tipo)}</select></div></div>
+      <div class="campo"><label>Escenario (nombre)</label><input id="ccEsTitulo"><div class="hint" id="ccEsHint"></div></div>`}
+    <div class="campo-2"><div class="campo"><label>Mes desde</label><select id="ccEsDesde">${ccOpts(mesesOpts, ccN(v.MesDesde) || 1)}</select></div>
+      <div class="campo"><label>Mes hasta</label><select id="ccEsHasta">${ccOpts(mesesOpts, ccN(v.MesHasta) || 12)}</select></div></div>
+    <div class="campo-2">${num("ccEsFact", "Facturación (USD)", ccN(v.FacturacionUSD), "Presupuesto: realista. Real: facturada en el año")}${num("ccEsVenta", "Venta adjudicada (USD)", ccN(v.VentaAdjudicadaUSD))}</div>
+    <div class="campo-2">${num("ccEsHoras", "Horas cargadas a proyectos", ccN(v.HorasCargadas))}${num("ccEsOcup", "Ocupación (%)", ccPctVal(v.Ocupacion), "Presupuesto: supuesto. Real: se calcula al publicar")}</div>
+    <div class="campo-2">${num("ccEsTcArs", "ARS por USD", ccN(v.TC_ARS))}${num("ccEsTcEur", "EUR por USD", ccN(v.TC_EUR))}</div>
+    <div class="campo-2">${num("ccEsCargas", "Cargas sociales AR (%)", ccPctVal(v.CargasSocialesPct))}${num("ccEsSac", "SAC (%)", ccPctVal(v.SACPct))}</div>
+    <div class="campo"><label>Notas</label><textarea id="ccEsNotas">${escapeHtml(v.Notas || "")}</textarea></div>
+    ${ccPieModal(`ccGuardarEscenario(${e ? `'${escapeHtml(e.id)}'` : "null"})`)}`, "540px");
+  if(!e){ document.getElementById("ccEsAnio").addEventListener("input", ccEsAuto); ccEsAuto(); }
+}
+function ccEsAuto(){
+  const anio = ccNumIn("ccEsAnio"), tipo = ccV("ccEsTipo");
+  const ver = tipo === "Real" ? 0 : ccProximaVersion(anio);
+  document.getElementById("ccEsTitulo").value = tipo === "Real" ? `${anio} Real` : `${anio} ${tipo} v${ver}`;
+  document.getElementById("ccEsHint").textContent = tipo === "Real" ? "Versión 0" : `Versión ${ver}`;
+}
+function ccGuardarEscenario(id){
+  return ccEjecutarModal(async () => {
+    const e = id ? ccEsc(id) : null;
+    const desde = Number(ccV("ccEsDesde")), hasta = Number(ccV("ccEsHasta"));
+    if(desde > hasta) return ccErrModal("El mes desde no puede ser posterior al mes hasta.");
+    const campos = { MesDesde: desde, MesHasta: hasta, FacturacionUSD: ccNumIn("ccEsFact"), VentaAdjudicadaUSD: ccNumIn("ccEsVenta"),
+      HorasCargadas: ccNumIn("ccEsHoras"), Ocupacion: ccPctIn("ccEsOcup"), TC_ARS: ccNumIn("ccEsTcArs"), TC_EUR: ccNumIn("ccEsTcEur"),
+      CargasSocialesPct: ccPctIn("ccEsCargas"), SACPct: ccPctIn("ccEsSac"), Notas: ccV("ccEsNotas") || null };
+    if(Object.values(campos).some(x => typeof x === "number" && isNaN(x))) return ccErrModal("Hay un número mal cargado.");
+    if(e){ await ccActualizar("escenarios", e.id, campos); Object.assign(e, campos); }
+    else {
+      const anio = ccNumIn("ccEsAnio"), tipo = ccV("ccEsTipo"), titulo = ccV("ccEsTitulo");
+      if(!anio || anio < 2000 || anio > 2100) return ccErrModal("Año inválido.");
+      if(!titulo) return ccErrModal("Poné un nombre.");
+      if(cc.escenarios.some(x => String(x.Title).toLowerCase() === titulo.toLowerCase())) return ccErrModal("Ya existe un escenario con ese nombre.");
+      if(tipo === "Real" && cc.escenarios.some(x => ccN(x.Anio) === anio && x.Tipo === "Real")) return ccErrModal(`Ya hay un escenario Real para ${anio}.`);
+      const nuevo = { ...campos, Title: titulo, Anio: anio, Tipo: tipo, Version: tipo === "Real" ? 0 : ccProximaVersion(anio), Estado: "Borrador", Vigente: false };
+      nuevo.id = await ccCrear("escenarios", nuevo);
+      cc.escenarios.push(nuevo);
+    }
+    cerrarModal("overlayCC");
+    mostrarToast(e ? "Escenario actualizado" : "Escenario creado");
+    renderCC();
+  });
+}
+async function ccCambiarEstado(id, estado){
+  const e = ccEsc(id);
+  const txt = estado === "Aprobado"
+    ? `¿Aprobar "${e.Title}"? Queda bloqueado: los cambios posteriores se hacen en una versión nueva.`
+    : `¿Cerrar "${e.Title}"? Queda de solo lectura.`;
+  if(!confirm(txt)) return;
+  const campos = estado === "Aprobado" ? { Estado: estado, FechaAprobacion: HOY_ISO, AprobadoPor: ccQuien() } : { Estado: estado };
+  try{ await ccActualizar("escenarios", id, campos); Object.assign(e, campos); mostrarToast(`Escenario ${estado.toLowerCase()}`); renderCC(); }
+  catch(err){ ccError(err); }
+}
+async function ccMarcarVigente(id){
+  const e = ccEsc(id);
+  if(!confirm(`¿Marcar "${e.Title}" como presupuesto vigente de ${e.Anio}? Se desmarca el que esté vigente hoy.`)) return;
+  try{
+    for(const o of cc.escenarios.filter(x => x.id !== id && ccN(x.Anio) === ccN(e.Anio) && x.Vigente)){
+      await ccActualizar("escenarios", o.id, { Vigente: false }); o.Vigente = false;
+    }
+    await ccActualizar("escenarios", id, { Vigente: true }); e.Vigente = true;
+    mostrarToast("Presupuesto vigente actualizado");
+    renderCC();
+  } catch(err){ ccError(err); }
+}
+
+// Copiar como presupuesto nuevo
+function ccModalCopiar(srcId){
+  const s = ccEsc(srcId), movs = ccMovsDe(s.id);
+  const anio = s.Tipo === "Real" ? ccN(s.Anio) + 1 : ccN(s.Anio);
+  const cats = CC_CATEGORIAS.filter(c => movs.some(m => m.Categoria === c));
+  ccAbrirModal(`${ccHeadModal("Copiar como presupuesto nuevo", `Desde ${escapeHtml(s.Title)} (${movs.length} movimientos)`)}
+    <div class="campo-2"><div class="campo"><label>Año destino</label><input type="number" id="ccCpAnio" value="${anio}" oninput="ccCpAuto()"></div>
+      <div class="campo"><label>Tipo</label><select id="ccCpTipo" onchange="ccCpAuto()">${ccOpts(["Presupuesto", "Presupuesto retroactivo"], "Presupuesto")}</select></div></div>
+    <div class="campo"><label>Escenario nuevo</label><input id="ccCpTitulo" readonly><div class="hint" id="ccCpVerHint"></div></div>
+    <div class="campo"><label>Ajuste salarial (%)</label><input type="number" step="any" id="ccCpAjuste" value="0" oninput="ccCpAuto()">
+      <div class="hint">Se aplica al Monto de las categorías marcadas:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12.5px;">${cats.map(c => `<label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" class="ccCpCat" value="${escapeHtml(c)}" ${c.startsWith("Nómina") ? "checked" : ""} onchange="ccCpAuto()" style="width:auto;">${escapeHtml(c)}</label>`).join("")}</div></div>
+    <div class="campo-2"><div class="campo"><label>ARS por USD</label><input type="number" step="any" id="ccCpTcArs" value="${ccN(s.TC_ARS) ?? ""}" oninput="ccCpAuto()"></div>
+      <div class="campo"><label>EUR por USD</label><input type="number" step="any" id="ccCpTcEur" value="${ccN(s.TC_EUR) ?? ""}" oninput="ccCpAuto()"></div></div>
+    <div class="hint" style="margin:-6px 0 10px;">Los movimientos en ARS/EUR se recalculan con estos tipos de cambio. Vacío = conserva los USD de origen.</div>
+    <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-bottom:10px;"><input type="checkbox" id="ccCpBajas" checked onchange="ccCpAuto()" style="width:auto;"> Omitir movimientos de personas dadas de baja antes del año destino</label>
+    <div class="panel" style="margin:0;padding:10px 12px;font-size:12.5px;" id="ccCpResumen"></div>
+    <div style="font-size:12.5px;margin-top:8px;color:var(--azul-oscuro);" id="ccCpProgreso"></div>
+    ${ccPieModal(`ccEjecutarCopia('${escapeHtml(s.id)}')`, "Copiar")}`, "560px");
+  document.getElementById("ccModal").dataset.src = s.id;
+  ccCpAuto();
+}
+function ccCpConfig(){
+  const anio = ccNumIn("ccCpAnio"), tipo = ccV("ccCpTipo"), ver = ccProximaVersion(anio);
+  return { anio, tipo, ver, titulo: `${anio} ${tipo} v${ver}`, ajuste: (ccNumIn("ccCpAjuste") || 0) / 100,
+    cats: [...document.querySelectorAll(".ccCpCat:checked")].map(x => x.value),
+    tcArs: ccNumIn("ccCpTcArs"), tcEur: ccNumIn("ccCpTcEur"), omitirBajas: document.getElementById("ccCpBajas").checked };
+}
+function ccCpMovs(s, cfg){
+  const ini = `${cfg.anio}-01-01`;
+  return ccMovsDe(s.id).filter(m => {
+    if(!cfg.omitirBajas) return true;
+    const p = ccPersona(m.PersonaLookupId), b = p && ccFecha(p.FechaBaja);
+    return !(b && b < ini);
+  });
+}
+function ccCamposCopia(m, s, cfg, escId){
+  const f = cfg.cats.includes(m.Categoria) ? 1 + cfg.ajuste : 1;
+  const monto = ccR((Number(m.Monto) || 0) * f);
+  let tc = ccN(m.TipoCambio), usd;
+  if(m.Moneda === "USD"){ tc = 1; usd = monto; }
+  else {
+    const nuevo = m.Moneda === "ARS" ? cfg.tcArs : m.Moneda === "EUR" ? cfg.tcEur : null;
+    if(nuevo){ tc = nuevo; usd = ccR(monto / nuevo); }
+    else usd = ccR((Number(m.MontoUSD) || 0) * f);
+  }
+  const p = ccPersona(m.PersonaLookupId);
+  return ccSinNulos({ Title: ccTituloMov(cfg.anio, m.Mes, m.Categoria, p && p.Title, m.Concepto), EscenarioLookupId: escId ? String(escId) : null,
+    Anio: cfg.anio, Mes: ccN(m.Mes), Categoria: m.Categoria, Concepto: m.Concepto || null,
+    PersonaLookupId: m.PersonaLookupId ? String(m.PersonaLookupId) : null, Filial: m.Filial || null, Moneda: m.Moneda,
+    Monto: monto, TipoCambio: tc, MontoUSD: usd, Origen: "Estimado", Fuente: `Copia de ${s.Title}`, Notas: m.Notas || null });
+}
+function ccCpAuto(){
+  const s = ccEsc(document.getElementById("ccModal").dataset.src), cfg = ccCpConfig();
+  document.getElementById("ccCpTitulo").value = cfg.anio ? cfg.titulo : "";
+  document.getElementById("ccCpVerHint").textContent = cfg.anio ? `Versión ${cfg.ver} · queda en Borrador, no vigente` : "";
+  const movs = ccCpMovs(s, cfg);
+  const total = movs.reduce((a, m) => a + ccCamposCopia(m, s, cfg).MontoUSD, 0);
+  const origen = ccTotales(s.id).total;
+  document.getElementById("ccCpResumen").innerHTML = `Se van a crear <strong>${movs.length}</strong> movimientos (Origen = Estimado) por <strong>${usdA(total)}</strong>
+    — origen ${usdA(origen)} (${origen ? ccPct(total / origen - 1) : "—"}).`;
+}
+function ccEjecutarCopia(srcId){
+  return ccEjecutarModal(async () => {
+    const s = ccEsc(srcId), cfg = ccCpConfig();
+    if(!cfg.anio || cfg.anio < 2000 || cfg.anio > 2100) return ccErrModal("Año inválido.");
+    if(cc.escenarios.some(x => String(x.Title).toLowerCase() === cfg.titulo.toLowerCase())) return ccErrModal("Ya existe un escenario con ese nombre.");
+    if([cfg.ajuste, cfg.tcArs, cfg.tcEur].some(x => x != null && isNaN(x))) return ccErrModal("Hay un número mal cargado.");
+    const movs = ccCpMovs(s, cfg), prog = document.getElementById("ccCpProgreso");
+    prog.textContent = "Creando el escenario…";
+    const escId = await ccCrear("escenarios", {
+      Title: cfg.titulo, Anio: cfg.anio, Tipo: cfg.tipo, Version: cfg.ver, Estado: "Borrador", Vigente: false, BasadoEnLookupId: String(s.id),
+      MesDesde: ccN(s.MesDesde) || 1, MesHasta: ccN(s.MesHasta) || 12, FacturacionUSD: ccN(s.FacturacionUSD), VentaAdjudicadaUSD: ccN(s.VentaAdjudicadaUSD),
+      HorasCargadas: ccN(s.HorasCargadas), Ocupacion: ccN(s.Ocupacion), TC_ARS: cfg.tcArs ?? ccN(s.TC_ARS), TC_EUR: cfg.tcEur ?? ccN(s.TC_EUR),
+      CargasSocialesPct: ccN(s.CargasSocialesPct), SACPct: ccN(s.SACPct), AjusteSalarialPct: cfg.ajuste,
+      Notas: `Copiado de ${s.Title} el ${fmt(HOY_ISO)}. Ajuste salarial ${ccR(cfg.ajuste * 100, 2)}%${cfg.cats.length ? " sobre " + cfg.cats.join(", ") : ""}.`,
+    });
+    const ruta = await ccRutaLista("movimientos");
+    const res = await ccBatch(movs.map(m => ({ method: "POST", url: `${ruta}/items`, body: { fields: ccCamposCopia(m, s, cfg, escId) } })),
+      (h, t) => { prog.textContent = `Copiando movimientos: ${h} de ${t}…`; });
+    await ccCargar();
+    cc.anio = cfg.anio; cc.escId = escId; cc.compId = "auto";
+    if(res.errores.length){
+      console.error("Errores al copiar:", res.errores);
+      prog.textContent = "";
+      renderCC();
+      return ccErrModal(`Se copiaron ${res.hechos} de ${movs.length} movimientos. ${res.errores.length} fallaron (detalle en la consola): ${res.errores[0].status} ${res.errores[0].msg}. El escenario quedó en Borrador: podés eliminarlo y repetir.`);
+    }
+    cerrarModal("overlayCC");
+    mostrarToast(`Escenario "${cfg.titulo}" creado con ${res.hechos} movimientos`);
+    renderCC();
+  });
+}
+function ccModalEliminarEsc(id){
+  const e = ccEsc(id), n = ccMovsDe(id).length;
+  ccAbrirModal(`${ccHeadModal("Eliminar escenario", escapeHtml(e.Title))}
+    <div style="font-size:13px;margin-bottom:12px;">Se mandan a la papelera del sitio <strong>${n}</strong> movimientos y el escenario. Para confirmar, escribí el nombre del escenario.</div>
+    <div class="campo"><input id="ccElConfirma" autocomplete="off"></div>
+    <div style="font-size:12.5px;color:var(--azul-oscuro);" id="ccElProgreso"></div>
+    ${ccPieModal(`ccEliminarEscenario('${escapeHtml(e.id)}')`, "Eliminar")}`);
+}
+function ccEliminarEscenario(id){
+  return ccEjecutarModal(async () => {
+    const e = ccEsc(id);
+    if(ccV("ccElConfirma") !== String(e.Title).trim()) return ccErrModal("El nombre no coincide.");
+    if(cc.escenarios.some(x => String(x.BasadoEnLookupId) === id)) return ccErrModal("Otro escenario está basado en este: no se puede eliminar.");
+    const ruta = await ccRutaLista("movimientos"), prog = document.getElementById("ccElProgreso");
+    const movs = ccMovsDe(id);
+    const res = await ccBatch(movs.map(m => ({ method: "DELETE", url: `${ruta}/items/${m.id}` })), (h, t) => { prog.textContent = `Borrando movimientos: ${h} de ${t}…`; });
+    if(res.errores.length){ await ccCargar(); renderCC(); return ccErrModal(`No se pudieron borrar ${res.errores.length} movimientos; el escenario no se eliminó.`); }
+    await ccBorrar("escenarios", id);
+    await ccCargar();
+    cc.escId = null;
+    cerrarModal("overlayCC");
+    mostrarToast("Escenario eliminado (está en la papelera del sitio)");
+    renderCC();
+  });
+}
+
+// ---- 5. Publicar parámetros (CC_Parametros en ACP, que leen los CANS) ----
+const CC_PUB_FILAS = [
+  ["TipoDato", "Tipo de dato", "txt"], ["EscenarioOrigen", "Escenario de origen", "txt"],
+  ["EstructuraTotalUSD", "Estructura total (USD)", "usd"], ["NominaDirectaUSD", "Nómina directa (USD)", "usd"],
+  ["EstructuraSinDirectaUSD", "Estructura sin nómina directa (USD)", "usd"], ["FacturacionUSD", "Facturación (USD)", "usd"],
+  ["VentaAdjudicadaUSD", "Venta adjudicada (USD)", "usd"], ["HorasDisponibles", "Horas disponibles", "num"],
+  ["HorasCargadas", "Horas cargadas", "num"], ["Ocupacion", "Ocupación", "pct"], ["CostoHoraUSD", "Costo hora real (USD)", "usd2"],
+  ["CostoEmpresaPct", "Costo empresa % sobre venta", "pct"], ["TasaEstructuraPct", "Tasa de estructura", "pct"],
+];
+// Σ HorasMes de las personas Directas activas en cada mes del escenario
+function ccHorasDisponibles(e){
+  let tot = 0;
+  ccMesesDe(e).forEach(m => {
+    const anio = ccN(e.Anio), ini = `${anio}-${pad2(m)}-01`;
+    const fin = `${anio}-${pad2(m)}-${pad2(new Date(Date.UTC(anio, m, 0)).getUTCDate())}`;
+    cc.personas.filter(p => p.Rol === "Directo").forEach(p => {
+      const alta = ccFecha(p.FechaAlta), baja = ccFecha(p.FechaBaja);
+      if((alta && alta > fin) || (baja && baja < ini)) return;
+      tot += ccN(p.HorasMes) ?? 160;
+    });
+  });
+  return tot;
+}
+function ccCalcularParametros(e, ov){
+  const t = ccTotales(e.id);
+  const horasDisp = ov.horasDisp ?? ccHorasDisponibles(e), horasCarg = ccN(e.HorasCargadas);
+  const ocupCalc = horasCarg != null && horasDisp ? horasCarg / horasDisp : null;
+  const ocup = ov.ocup ?? (e.Tipo === "Real" ? ocupCalc : (ccN(e.Ocupacion) ?? ocupCalc));
+  const fact = ccN(e.FacturacionUSD), venta = ccN(e.VentaAdjudicadaUSD);
+  return {
+    Title: String(e.Anio), Anio: ccN(e.Anio), TipoDato: e.Tipo === "Real" ? "Real" : "Presupuesto", EscenarioOrigen: e.Title,
+    EstructuraTotalUSD: ccR(t.total), NominaDirectaUSD: ccR(t.directa), EstructuraSinDirectaUSD: ccR(t.sinDirecta),
+    FacturacionUSD: fact, VentaAdjudicadaUSD: venta, HorasDisponibles: horasDisp, HorasCargadas: horasCarg,
+    Ocupacion: ccR(ocup, 6), CostoHoraUSD: horasDisp && ocup ? ccR(t.directa / (horasDisp * ocup)) : null,
+    CostoEmpresaPct: fact ? ccR(t.sinDirecta / fact, 6) : null, TasaEstructuraPct: venta ? ccR(t.total / venta, 6) : null,
+  };
+}
+const ccFilaParametros = anio => (cc.parametros || []).find(r => String(r.Title).trim() === String(anio));
+function ccHtmlPublicar(){
+  const e = ccEsc(cc.escId);
+  if(!e) return `<div class="panel">No hay escenarios cargados.</div>`;
+  const puede = ccPuedeEditar !== false && cc.parametros !== null;
+  const calc = ccCalcularParametros(e, {});
+  let h = cc.parametros === null ? `<div class="cc-aviso">⚠ No se pudo leer CC_Parametros en el sitio ACP (¿falta el grant de la app a ese sitio, o tu permiso en la lista?). No se puede publicar.</div>` : "";
+  const actual = ccFilaParametros(e.Anio);
+  if(actual && actual.TipoDato === "Real" && e.Tipo !== "Real") h += `<div class="cc-aviso">⚠ La fila ${escapeHtml(actual.Title)} hoy tiene datos Reales (${escapeHtml(actual.EscenarioOrigen)}). Publicar este presupuesto la reemplaza.</div>`;
+  h += `<div class="panel"><h3>Publicar ${escapeHtml(String(e.Anio))} desde “${escapeHtml(e.Title)}”</h3>
+    <div style="font-size:12.5px;color:var(--gris);margin-bottom:12px;">Una fila por año en CC_Parametros (sitio ACP). Solo agregados, sin sueldos: es lo que leen los CANS. Método A: costo hora = nómina directa ÷ (horas disponibles × ocupación); costo empresa = estructura sin nómina directa ÷ facturación.</div>
+    <div class="campo-2" style="max-width:620px;">
+      <div class="campo"><label>Horas disponibles</label><input type="number" step="any" id="ccPubHoras" placeholder="${calc.HorasDisponibles}" oninput="ccRecalcularPublicar()">
+        <div class="hint">Vacío = calculado: ${ccMonto(calc.HorasDisponibles, 0)} (personas Directas activas × horas/mes, ${ccMesesDe(e).length} meses)</div></div>
+      <div class="campo"><label>Ocupación (%)</label><input type="number" step="any" id="ccPubOcup" placeholder="${calc.Ocupacion != null ? ccR(calc.Ocupacion * 100, 2) : ""}" oninput="ccRecalcularPublicar()">
+        <div class="hint">Vacío = ${e.Tipo === "Real" ? "horas cargadas ÷ disponibles" : "supuesto del escenario (o cargadas ÷ disponibles)"}</div></div>
+    </div>
+    <div class="campo" style="max-width:620px;"><label>Notas</label><textarea id="ccPubNotas" placeholder="Vacío = se conservan las notas actuales de la fila"></textarea></div>
+    <div class="cc-scroll" id="ccPubTabla"></div>
+    ${actual ? `<div class="motivo-chip" style="max-width:none;margin-top:8px;">Publicado por última vez: ${actual.FechaPublicacion ? escapeHtml(new Date(actual.FechaPublicacion).toLocaleString("es-AR")) : "—"}${actual.PublicadoPor ? " · " + escapeHtml(actual.PublicadoPor) : ""}</div>` : ""}
+    <div class="modal-actions" style="justify-content:flex-start;">${puede ? `<button class="btn btn-primario" id="ccBtnPublicar" onclick="ccPublicar()">📤 Publicar en CC_Parametros (${escapeHtml(String(e.Anio))})</button>` : ""}</div>
+  </div>`;
+  return h;
+}
+function ccOverridesPublicar(){ return { horasDisp: ccNumIn("ccPubHoras"), ocup: ccPctIn("ccPubOcup") }; }
+function ccRecalcularPublicar(){
+  const e = ccEsc(cc.escId), cont = document.getElementById("ccPubTabla");
+  if(!e || !cont) return;
+  const nuevo = ccCalcularParametros(e, ccOverridesPublicar()), actual = ccFilaParametros(e.Anio) || {};
+  const fmtV = (v, t) => v == null || v === "" ? "—" : t === "txt" ? escapeHtml(v) : t === "pct" ? ccPct(Number(v)) : t === "num" ? ccMonto(Number(v), 0) : t === "usd2" ? "$" + ccMonto(Number(v)) : usdA(Number(v));
+  const fmtD = (a, b, t) => {
+    if(t === "txt") return String(a ?? "") === String(b ?? "") ? "" : "cambia";
+    if(a == null || b == null || a === "" || b === "") return "";
+    const d = Number(b) - Number(a);
+    if(Math.abs(d) < 1e-9) return `<span class="desvio zero">=</span>`;
+    return t === "pct" ? `${d > 0 ? "+" : ""}${ccR(d * 100, 2)} p.p.` : t === "num" ? `${d > 0 ? "+" : ""}${ccMonto(d, 0)}` : `${d > 0 ? "+" : ""}${t === "usd2" ? "$" + ccMonto(d) : usdA(d)}`;
+  };
+  cont.innerHTML = `<table class="simple" style="max-width:820px;"><thead><tr><th>Campo</th><th class="n">Publicado hoy</th><th class="n">Nuevo</th><th class="n">Cambio</th></tr></thead><tbody>
+    ${CC_PUB_FILAS.map(([k, lbl, t]) => `<tr><td>${lbl}</td><td class="n">${fmtV(actual[k], t)}</td><td class="n"><strong>${fmtV(nuevo[k], t)}</strong></td><td class="n">${fmtD(actual[k], nuevo[k], t)}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+async function ccPublicar(){
+  const e = ccEsc(cc.escId), ov = ccOverridesPublicar();
+  if([ov.horasDisp, ov.ocup].some(x => x != null && isNaN(x))) return mostrarToast("Hay un número mal cargado.");
+  const campos = { ...ccCalcularParametros(e, ov), FechaPublicacion: new Date().toISOString(), PublicadoPor: ccQuien() };
+  const notas = ccV("ccPubNotas");
+  if(notas) campos.Notas = notas;
+  const actual = ccFilaParametros(e.Anio);
+  if(!confirm(`¿Publicar los parámetros ${e.Anio} desde "${e.Title}"? ${actual ? "Se actualiza la fila existente." : "Se crea la fila del año."} Los CANS los van a leer.`)) return;
+  const btn = document.getElementById("ccBtnPublicar");
+  btn.disabled = true;
+  try{
+    if(actual) await ccActualizar("parametros", actual.id, campos);
+    else await ccCrear("parametros", campos);
+    cc.parametros = await ccListar("parametros");
+    mostrarToast(`Parámetros ${e.Anio} publicados`);
+    renderCC();
+  } catch(err){ ccError(err); btn.disabled = false; }
+}
+
+// =====================================================================
 // Navegación entre módulos (pestañas) y modales
 // =====================================================================
 let statsSubmodulo = "financiero";
@@ -3875,6 +4777,7 @@ document.querySelectorAll(".module-tab").forEach(el=>{
     document.getElementById("vistaIngenierosWrap").style.display = vistaActual==="ingenieros" ? "block" : "none";
     document.getElementById("vistaFacturacionWrap").style.display = vistaActual==="facturacion" ? "block" : "none";
     document.getElementById("vistaArchivoWrap").style.display = vistaActual==="archivo" ? "block" : "none";
+    document.getElementById("vistaCCWrap").style.display = vistaActual==="cc" ? "block" : "none";
     if(vistaActual!=="facturacion") actualizarPanelFiltroCompras();
 
     if(vistaActual==="proyectos"){
@@ -3895,6 +4798,10 @@ document.querySelectorAll(".module-tab").forEach(el=>{
     } else if(vistaActual==="ingenieros"){
       document.getElementById("tituloVista").textContent = "Ingenieros";
       document.getElementById("subtituloVista").textContent = "Ocupación comprometida (proyectos ganados) vs. reservada (pipeline sin ganar)";
+    } else if(vistaActual==="cc"){
+      document.getElementById("tituloVista").textContent = "Centro de costos";
+      document.getElementById("subtituloVista").textContent = "Real y presupuesto por año (confidencial) y parámetros que leen los CANS";
+      abrirCentroCostos();
     }
   });
 });
